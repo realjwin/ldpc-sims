@@ -2,9 +2,10 @@ clear all; close all;
 
 %variables
 N = 64;
-num_blocks = N; %this is number of codeblocks sent, must be multiple of N
+cp = 0; %specifies # of channel taps (taps = cp+1)
+num_blocks = 5*N; %this is number of codeblocks sent, must be multiple of N
 oversampling = 1;
-snrdb = [0, 1, 1.3, 1.6, 1.9, 2.2, 2.5, 2.8, 3.1];
+snrdb = [0, 1, 1.3, 1.6:.1:4];
 n_snrdb = length(snrdb);
 
 %LDPC + OFDM variables
@@ -27,12 +28,21 @@ for k = 1:num_blocks,
 end
 
 %%%---GENERATE DFT MATRIX---%%%
+
+%DFT Matrix
 w = exp(-2*pi*i/N);
 W = zeros(N,N);
 for j=0:N-1,
     for k=0:N-1,
         W(j+1,k+1) = w^(j*k)/sqrt(N);
     end
+end
+
+%Eigenvalue Generator Matrix
+temp_iter = 0:N-1;
+w = exp(-2*pi*i.*temp_iter./N);
+for k=0:cp,
+    Wp(k+1,:) = w.^k;
 end
 
 %%%---SNR ITERATIONS---%%%
@@ -46,61 +56,71 @@ bler_hard = zeros(n_snrdb, 1);
 
 for m=1:n_snrdb,
     
+    snrdb(m)
+    
     %%%---MODULATE DATA---%%%
+    %concatenates rows together
     cbits_temp = reshape(cbits, 2, n_cbits/2)';
-    %bi2de is little-endian, largest bit = highest index
+    %bi2de is little-endian, (i.e. read in reverse, e.g. 01 = 2)
     %assume everything is little-endian!
     tx_samples = bi2de(cbits_temp);
 
     %qpsk modulation
-    %from quadrant 1 to 4 (couterclockwise): 10, 00, 01, 11
-    %note: I'm treating this as little-endian
+    %from quad 1 to 4 (counterclockwise): 01 (2), 00 (0), 10 (1), 11 (3)
     tx_symbols = (1/sqrt(2)) * qammod(tx_samples, 4);
 
     %%%---OFDM---%%%
 
     %each ofdm symbol is a column of length N
-    tx_ofdm_symbols = W'*reshape(tx_symbols, N, n_ofdm_symbols);
+    tx_ofdm_symbols = reshape(tx_symbols, N, n_ofdm_symbols);
 
     %%%---CHANNEL---%%%
 
     %channel is Rayleigh(1)
-    %note: CP not needed, incorporating in H
-    cp = 1;
-    h = normrnd(0,n_ofdm_symbols,1,cp) + i*normrnd(0,n_ofdm_symbols,1,cp);
+    h = normrnd(0,1,n_ofdm_symbols,cp+1) + i*normrnd(0,1,n_ofdm_symbols,cp+1);
     %normalize h
     h = h ./ sqrt(sum(abs(h).^2, 2));
-
-    %flip h to retain expectation that h(1) is the first elt
-    %generate proper circular channel via bullshit
-    temp = [fliplr(h) zeros(n_ofdm_symbols,N-cp)];
-    H = toeplitz([temp(1) fliplr(temp(2:end))], temp);
-    H = circshift(H, -(cp-1), 2);
-    %H = eye(N)
-
-    %generate channel orthogonalization
-    Heig = W*H*W';
-
-    %noise
+    
+    %%%---EIGENVALUES---%%%
+    %each column is N eigenvalues
+    lambda = (h*Wp)';
+    
+    %%%---NOISE---%%%
+    
+    %generate noise enhancement matrix [ inv(L)*W ]
+    %y = HW'x+n, inv(L)*Wy = x + inv(L)*Wn
+    
+    %add noise (and noise enhancement)
     noise = (1 / sqrt(10^(snrdb(m)/10))) * (1/sqrt(2)) * ...
-            (normrnd(0,1,N,n_ofdm_symbols) + i * normrnd(0,1,N,n_ofdm_symbols));
-    rx_ofdm_symbols = H*tx_ofdm_symbols + noise;
-
+            (normrnd(0, 1, N, n_ofdm_symbols) + i * normrnd(0, 1, N, n_ofdm_symbols));
+    
+    enhanced_noise = (1./lambda) .* (W*noise);
+        
+    rx_ofdm_symbols = tx_ofdm_symbols + enhanced_noise;
+    
     %%%---QUANTIZATION---%%%
 
     rx_ofdm_qsymbols = zeros(size(rx_ofdm_symbols));
     
+    %FIX IF IT WORKS FOR STUFF
     for k=1:oversampling,
         noise = (1 / sqrt(10^(snrdb(m)/10))) * (1/sqrt(2)) * ...
-        (normrnd(0,1,N,n_ofdm_symbols) + i * normrnd(0,1,N,n_ofdm_symbols));
-        temp = H*tx_ofdm_symbols + noise;
+                (normrnd(0, 1, N, n_ofdm_symbols) + ...
+                i * normrnd(0, 1, N, n_ofdm_symbols));
+            
+        enhanced_noise = (1./lambda) .* (W*noise);    
+        
+        temp = tx_ofdm_symbols + enhanced_noise;
         rx_ofdm_qsymbols = rx_ofdm_qsymbols + sign(temp);
     end
 
     %%%---DE-OFDM---%%%
-
-    rx_symbols = reshape(inv(Heig)*W*rx_ofdm_symbols, N*n_ofdm_symbols, 1);
-    rx_qsymbols = reshape(inv(Heig)*W*rx_ofdm_qsymbols, N*n_ofdm_symbols, 1);
+    
+    %rx_symbols = reshape(inv(Heig)*W*rx_ofdm_symbols, N*n_ofdm_symbols, 1);
+    %rx_qsymbols = reshape(inv(Heig)*W*rx_ofdm_qsymbols, N*n_ofdm_symbols, 1);
+    
+    rx_symbols = rx_ofdm_symbols;
+    rx_qsymbols = rx_ofdm_qsymbols;
 
     %%%---DEMODULATE DATA---%%%
 
@@ -122,9 +142,11 @@ for m=1:n_snrdb,
     
     %--- SOFT DECISION ---%
     %compute LLR = log ( P(b = 0) / P(b = 1) )
-    sigma = (1 / sqrt(10^(snrdb(m)/10)));  %CHANGE per channel
-    rx_cbits_b1 = ((imag(rx_symbols) + 1/sqrt(2)).^2 - (imag(rx_symbols) - 1/sqrt(2)).^2) / (2*sigma^2);
-    rx_cbits_b2 = ((real(rx_symbols) - 1/sqrt(2)).^2 - (real(rx_symbols) + 1/sqrt(2)).^2) / (2*sigma^2);
+    sigma = (1 ./ (abs(lambda).*sqrt(10^(snrdb(m)/10)))); %per channel noise level
+    rx_cbits_b1 = ((imag(rx_symbols) + 1/sqrt(2)).^2 - (imag(rx_symbols) - 1/sqrt(2)).^2) ./ (2*sigma.^2);
+    rx_cbits_b2 = ((real(rx_symbols) - 1/sqrt(2)).^2 - (real(rx_symbols) + 1/sqrt(2)).^2) ./ (2*sigma.^2);
+    rx_cbits_b1 = reshape(rx_cbits_b1, N*n_ofdm_symbols, 1);
+    rx_cbits_b2 = reshape(rx_cbits_b2, N*n_ofdm_symbols, 1);
     rx_cbits_soft = reshape([rx_cbits_b1 rx_cbits_b2]', block_size, num_blocks);
 
     for k = 1:num_blocks,
@@ -135,9 +157,11 @@ for m=1:n_snrdb,
     bler_soft(m) = sum(sign(sum(abs(rx_bits - bits)))) / num_blocks;
     
     %--- QUANTIZED SOFT DECISION ---%
-    sigma = (1 / sqrt(10^(snrdb(m)/10))); %CHANGE per channel
-    rx_qcbits_b1 = ((imag(rx_qsymbols) + 1/sqrt(2)).^2 - (imag(rx_qsymbols) - 1/sqrt(2)).^2) / (2*sigma^2);
-    rx_qcbits_b2 = ((real(rx_qsymbols) - 1/sqrt(2)).^2 - (real(rx_qsymbols) + 1/sqrt(2)).^2) / (2*sigma^2);
+    sigma = (1 ./ (abs(lambda).*sqrt(10^(snrdb(m)/10)))); %per channel noise level
+    rx_qcbits_b1 = ((imag(rx_qsymbols) + 1/sqrt(2)).^2 - (imag(rx_qsymbols) - 1/sqrt(2)).^2) ./ (2*sigma.^2);
+    rx_qcbits_b2 = ((real(rx_qsymbols) - 1/sqrt(2)).^2 - (real(rx_qsymbols) + 1/sqrt(2)).^2) ./ (2*sigma.^2);
+    rx_qcbits_b1 = reshape(rx_qcbits_b1, N*n_ofdm_symbols, 1);
+    rx_qcbits_b2 = reshape(rx_qcbits_b2, N*n_ofdm_symbols, 1);
     rx_qcbits_soft = reshape([rx_qcbits_b1 rx_qcbits_b2]', block_size, num_blocks);
     
     for k = 1:num_blocks,
@@ -150,9 +174,9 @@ end
 
 %%%--- DATA SAVING ---%%%
 timestamp = datestr(now, 'yyyymmdd-HHMM');
-filename = ['data/', timestamp, '_ldpcsim'];
+filename = ['data/', timestamp, '_cp=', num2str(cp)];
 save(filename, ...
     'num_blocks', 'snrdb', 'oversampling', ...
     'bits', 'cbits', ...
     'ber_uncoded', 'ber_soft', 'bler_soft', ...
-    'ber_quantized', 'bler_quantized')
+    'ber_quantized', 'bler_quantized', 'cp')
