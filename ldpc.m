@@ -2,11 +2,13 @@ clear all; close all;
 
 %variables
 N = 64;
-cp = 0; %specifies # of channel taps (taps = cp+1)
-num_blocks = 5*N; %this is number of codeblocks sent, must be multiple of N
+cp = 12; %specifies # of channel taps (taps = cp+1)
+num_blocks = 2*N; %5*N; %this is number of codeblocks sent, must be multiple of N
 oversampling = 1;
-snrdb = [0, 1, 1.3, 1.6:.1:4];
+coherence = 1; %120ms, 12 ofdm sym/ms
+snrdb = [0, 1, 1.3, 1.6:.2:7];
 n_snrdb = length(snrdb);
+plot = 1;
 
 %LDPC + OFDM variables
 %block length: 64800, rate: 1/2
@@ -58,6 +60,12 @@ for m=1:n_snrdb,
     
     snrdb(m)
     
+    %%%---VARIABLE RESET---%%%
+    lambda = zeros(N*n_ofdm_symbols,1);
+    rx_symbols = zeros(N, n_ofdm_symbols);
+    rx_qsymbols = zeros(N, n_ofdm_symbols);
+
+    
     %%%---MODULATE DATA---%%%
     %concatenates rows together
     cbits_temp = reshape(cbits, 2, n_cbits/2)';
@@ -75,70 +83,85 @@ for m=1:n_snrdb,
     tx_ofdm_symbols = reshape(tx_symbols, N, n_ofdm_symbols);
 
     %%%---CHANNEL---%%%
+    
+    for k=1:n_ofdm_symbols/coherence,
+        %channel is Rayleigh(1)
+        h = normrnd(0,1,1,cp+1) + i*normrnd(0,1,1,cp+1);
+        %normalize h
+        h = h ./ sqrt(sum(abs(h).^2, 2));
 
-    %channel is Rayleigh(1)
-    h = normrnd(0,1,n_ofdm_symbols,cp+1) + i*normrnd(0,1,n_ofdm_symbols,cp+1);
-    %normalize h
-    h = h ./ sqrt(sum(abs(h).^2, 2));
-    
-    %%%---EIGENVALUES---%%%
-    %each column is N eigenvalues
-    lambda = (h*Wp)';
-    
-    %%%---NOISE---%%%
-    
+        %flip h to retain expectation that h(1) is the first elt
+        %generate proper circular channel via bullshit
+        temp = [fliplr(h) zeros(1,N-(cp+1))];
+        H = toeplitz([temp(1) fliplr(temp(2:end))], temp);
+        H = circshift(H, -cp, 2);
+        %H = eye(N)
+
+        %generate channel orthogonalization (eigenvalues)
+        Heig{k} = W*H*W';
+        
+        lambda((k-1)*N*coherence+1:k*N*coherence) = ...
+            repmat(diag(Heig{k})', 1, coherence);
+                
+        rx_ofdm_symbols(:, (k-1)*coherence+1:k*coherence) = ...
+            H*W'*tx_ofdm_symbols(:, (k-1)*coherence+1:k*coherence);
+    end
+
+    %%%---QUANTIZATION & NOISE---%%%
+
     %generate noise enhancement matrix [ inv(L)*W ]
     %y = HW'x+n, inv(L)*Wy = x + inv(L)*Wn
     
-    %add noise (and noise enhancement)
-    noise = (1 / sqrt(10^(snrdb(m)/10))) * (1/sqrt(2)) * ...
-            (normrnd(0, 1, N, n_ofdm_symbols) + i * normrnd(0, 1, N, n_ofdm_symbols));
-    
-    enhanced_noise = (1./lambda) .* (W*noise);
-        
-    rx_ofdm_symbols = tx_ofdm_symbols + enhanced_noise;
-    
-    %%%---QUANTIZATION---%%%
-
     rx_ofdm_qsymbols = zeros(size(rx_ofdm_symbols));
     
-    %FIX IF IT WORKS FOR STUFF
     for k=1:oversampling,
         noise = (1 / sqrt(10^(snrdb(m)/10))) * (1/sqrt(2)) * ...
                 (normrnd(0, 1, N, n_ofdm_symbols) + ...
                 i * normrnd(0, 1, N, n_ofdm_symbols));
-            
-        enhanced_noise = (1./lambda) .* (W*noise);    
         
-        temp = tx_ofdm_symbols + enhanced_noise;
+        temp = rx_ofdm_symbols + noise;
         rx_ofdm_qsymbols = rx_ofdm_qsymbols + sign(temp);
     end
 
+    %add noise for non-quantized
+    noise = (1 / sqrt(10^(snrdb(m)/10))) * (1/sqrt(2)) * ...
+            (normrnd(0, 1, N, n_ofdm_symbols) + ...
+            i * normrnd(0, 1, N, n_ofdm_symbols));
+    
+    rx_ofdm_symbols = rx_ofdm_symbols + noise;
+
     %%%---DE-OFDM---%%%
     
-    %rx_symbols = reshape(inv(Heig)*W*rx_ofdm_symbols, N*n_ofdm_symbols, 1);
-    %rx_qsymbols = reshape(inv(Heig)*W*rx_ofdm_qsymbols, N*n_ofdm_symbols, 1);
+    for k=1:n_ofdm_symbols/coherence,
+        rx_symbols(:, (k-1)*coherence+1:k*coherence) = ...
+            inv(Heig{k})*W*rx_ofdm_symbols(:, (k-1)*coherence+1:k*coherence);
+        rx_qsymbols(:, (k-1)*coherence+1:k*coherence) = ...
+            inv(Heig{k})*W*rx_ofdm_qsymbols(:, (k-1)*coherence+1:k*coherence);
+    end
     
-    rx_symbols = rx_ofdm_symbols;
-    rx_qsymbols = rx_ofdm_qsymbols;
-
+    %reshape(inv(Heig)*W*rx_ofdm_symbols, N*n_ofdm_symbols, 1);
+    
     %%%---DEMODULATE DATA---%%%
+    
+    rx_symbols = reshape(rx_symbols, N*n_ofdm_symbols, 1);
+    rx_qsymbols = reshape(rx_qsymbols, N*n_ofdm_symbols, 1);
 
     %--- HARD DECISION ---%
     rx_samples_hard = qamdemod(rx_symbols, 4);
     rx_cbits_hard = de2bi(rx_samples_hard)';
     rx_cbits_hard = reshape(rx_cbits_hard, block_size, num_blocks);
     %convert hard decisions to LLR
-    rx_cbits_hard_llr = - (rx_cbits_hard * 2 - 1) * Inf;
-    
-    %for k = 1:num_blocks,
-    %    rx_bits_hard(:, k) = step(hDec, rx_cbits_hard_llr(:,k));
-    %end
-    %
-    %ber_hard(m) = sum(sum(abs(rx_bits_hard - bits))) / n_bits;
-    %bler_hard(m) = sum(sign(sum(abs(rx_bits_hard - bits)))) / num_blocks;
+    %rx_cbits_hard_llr = - (rx_cbits_hard * 2 - 1) * Inf;
 
     ber_uncoded(m) = sum(sum(abs(rx_cbits_hard - cbits))) / (block_size * num_blocks);
+    
+    rx_qsamples_hard = qamdemod(rx_qsymbols, 4);
+    rx_qcbits_hard = de2bi(rx_qsamples_hard)';
+    rx_qcbits_hard = reshape(rx_qcbits_hard, block_size, num_blocks);
+    %convert hard decisions to LLR
+    %rx_qcbits_hard_llr = - (rx_qcbits_hard * 2 - 1) * Inf;
+    
+    ber_quncoded(m) = sum(sum(abs(rx_qcbits_hard - cbits))) / (block_size * num_blocks);
     
     %--- SOFT DECISION ---%
     %compute LLR = log ( P(b = 0) / P(b = 1) )
@@ -179,4 +202,18 @@ save(filename, ...
     'num_blocks', 'snrdb', 'oversampling', ...
     'bits', 'cbits', ...
     'ber_uncoded', 'ber_soft', 'bler_soft', ...
-    'ber_quantized', 'bler_quantized', 'cp')
+    'ber_quantized', 'bler_quantized', 'cp', 'coherence')
+
+if plot == 1,
+    ber_theory = qfunc(sqrt(10.^(snrdb./10)));
+    
+    semilogy(snrdb, ber_theory, 'k')
+    hold on
+    semilogy(snrdb, ber_uncoded, '*k')
+    semilogy(snrdb, ber_quncoded, '*b')
+    semilogy(snrdb, ber_soft, '-rs')
+    semilogy(snrdb, ber_quantized, '-bo')
+    xlabel('SNR (dB)')
+    ylabel('BER')
+    legend('Theory', 'Uncoded', 'Quantized Uncoded', 'Soft', 'Quantized') %add quantized uncoded
+end
