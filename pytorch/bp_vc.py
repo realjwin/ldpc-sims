@@ -1,11 +1,3 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-Created on Tue Apr 30 09:27:59 2019
-
-@author: jacobwinick
-"""
-
 import math
 import numpy as np
 
@@ -18,161 +10,122 @@ import torch.nn as nn
 class BeliefPropagationVC_Function(torch.autograd.Function):
     """
     implements x_i,e=(v,c) = 2 atanh ( mult x_i-1, e )
+    
+    this is effectively the message which the check nodes create based on
+    the received info from the variable nodes, which is why it's called V->C
+    
+    note: it may be that the implementation of atanh is not stable
     """
 
-    # Note that both forward and backward are @staticmethods
     @staticmethod
     def forward(ctx, input, mask):
-        #convert tensor to row vector
-        #broadcast input to the mask size (aka repeat rows)
-        input_temp1 = input.view(1, -1).expand_as(mask)
         
         #create "inverse" mask to convert 0's to 1's & vice-versa
-        mask_add = -1 * ( mask - 1 )
+        #since we're multiplying, after we mask the connections we want
+        #we must convert post-mask 0's to the multiplicative identity (i.e. 1)
+        inverse_mask = -1 * ( mask - 1 )
         
-        #get input & connections ready for multiplication
-        input_temp2 = mask * input_temp1 + mask_add
+        masked_input = mask * input.view(1, -1).expand_as(mask) + inverse_mask
         
-        #element wise product, where some values are "zero'd" (aka 1)
+        #element wise product of the masked input
         #this is creating the non-fully connected architecture
-        #this is now a COLUMN vector
-        output_temp = torch.prod(input_temp2, dim=1, keepdim=True)
+        multiplied_input = torch.prod(masked_input, dim=1, keepdim=True)
+        
+        #if min(abs(1-multiplied_input.numpy())) < 1e-6:
+        #    print('may have divide by zero error')
+        #    print(min(abs(1-multiplied_input.numpy())))
+        
+        #it's required that | output_temp | < 1, is this enforced here?
+        multiplied_input = torch.clamp(multiplied_input, -1, 1)
         
         #implementation of 2 * atanh (this may not be numerically stable)
-        #it's required that | output_temp | < 1, is this enforced here?
-        output = np.log(torch.div( 1 + output_temp, 1 - output_temp ))
-
-        ctx.save_for_backward(input, mask, output_temp)
+        output = np.log(torch.div( 1 + multiplied_input, 1 - multiplied_input ))
+        
+        #save the output for the backprop
+        ctx.save_for_backward(input, mask, multiplied_input)
+        
         return output
 
-    # This function has only a single output, so it gets only one gradient
     @staticmethod
     def backward(ctx, grad_output):
-        # This is a pattern that is very convenient - at the top of backward
-        # unpack saved_tensors and initialize all gradients w.r.t. inputs to
-        # None. Thanks to the fact that additional trailing Nones are
-        # ignored, the return statement is simple even when the function has
-        # optional inputs.
         
-        input, mask, output_temp = ctx.saved_tensors
-        grad_input = None
+        #load saved tensors
+        input, mask, multiplied_input = ctx.saved_tensors
         
-        #no gradient required for mask, so not implementing
+        #constant factor for derivative of function
+        grad_matrix_const = 2 / (1 - multiplied_input**2)
+        
+        #create matrix which represents "almost-correct" derivative
+        #each column has the same "almost-correct" derivative
+        grad_matrix_temp = (grad_matrix_const * multiplied_input).view(1,-1).expand_as(mask.t())
+        
+        #divide each row by x_i-1,e to get correct derivative since we're
+        #calculating d x_i,e' / d x_i-1,e where e is row index, e' is col index
+        #then mask the connections which don't exist. it is the transpose of mask
+        #because we're doing it "backwards" from the forward direction
+        grad_matrix = mask.t() * ( grad_matrix_temp / input.view(-1,1).expand_as(mask.t()) )
+        
+        #compute the gradient wrt grad_output
+        grad_input = grad_matrix.mm(grad_output)
+        
+        #mask has no gradient
         grad_mask = None
-
-        # These needs_input_grad checks are optional and there only to
-        # improve efficiency. If you want to make your code simpler, you can
-        # skip them. Returning gradients for inputs that don't require it is
-        # not an error.
-        if ctx.needs_input_grad[0]:
-            #compute the matrix using mask
-            #a row in a mask corresponds to the first column of my result
-            #so if a row has a 1 in it, then it means that x_i-1,e connects to
-            #x_i,e and that means that it should be included in the list
-            #otherwise it should be zero
-            
-            #basically generate output_temp, and now you have the product for
-            #each output node, so use that for each column and then divide by
-            #the input for that derivative (this is probably like...not the best way
-            #but should be close enough that we don't have an issue). This means
-            #divide each ROW (not column) by the corresponding input
-            
-            #output temp is a column vector which represents the 
-            #multiplication of messages but before atanh
-            #we then need to broadcast this (repeat rows)
-            output_temp = output_temp.view(1,-1)
-            deriv_matrix_pre = 2 / 1 - (output_temp^2)
-            
-            #so we need to take output temp and skip the one not being used 
-            for row in mask:
-                for col in mask:
-                    if mask[row][col] == 0:
-                        deriv_matrix[row][col] = 0
-                    else:
-                        deriv_matrix[row][col] = output_temp[row] / input[col]
-                                
-            grad_input = deriv_matrix.t().matmul(grad_output)
-
+        
         return grad_input, grad_mask
 
 
 class BeliefPropagationVC(nn.Module):
     def __init__(self, mask):
         """
-        extended torch.nn module which mask connection.
-
-        mask [torch.tensor]:
-            the shape is (n_output_feature, n_input_feature).
-            the elements are 0 or 1 which declare un-connected or
-            connected.
+        Computes messages at check nodes in BP
+        
+        Inputs:
+            - mask [torch.tensor]:
+                - shape: input x output
+                - content: elts are 0 or 1 corresponding to a connection
+                           from one layer node to the next
+                
+        Notes:
+            - nn.Parameter is a special kind of tensor that will get
+            automatically registered as the nn.Module's parameter once
+            it's assigned as an attribute. This needs to be done to appear
+            in the .parameters() and to be converted when calling .cuda()
+            nn.Parameter requires gradients by default
         """
         
         super(BeliefPropagationVC, self).__init__()
         
-        self.output_features = mask.shape[0]
-        self.input_features = mask.shape[1]
+        self.input_dim = mask.shape[0]
+        self.output_dim = mask.shape[1]
 
+        #setup mask tensor
         if isinstance(mask, torch.Tensor):
-            self.mask = mask.type(torch.float)
+            self.mask = mask.type(torch.double)
         else:
-            self.mask = torch.tensor(mask, dtype=torch.float)
+            self.mask = torch.tensor(mask, dtype=torch.double)
 
         self.mask = nn.Parameter(self.mask, requires_grad=False)
 
-        # nn.Parameter is a special kind of Tensor, that will get
-        # automatically registered as Module's parameter once it's assigned
-        # as an attribute. Parameters and buffers need to be registered, or
-        # they won't appear in .parameters() (doesn't apply to buffers), and
-        # won't be converted when e.g. .cuda() is called. You can use
-        # .register_buffer() to register buffers.
-        # nn.Parameters require gradients by default.
-        self.weight = nn.Parameter(torch.Tensor(self.output_features, self.input_features))
-
-        if bias:
-            self.bias = nn.Parameter(torch.Tensor(self.output_features))
-        else:
-            # You should always register all possible parameters, but the
-            # optional ones can be None if you want.
-            self.register_parameter('bias', None)
-        self.reset_parameters()
-
-        # mask weight
-        self.weight.data = self.weight.data * self.mask
-
-    def reset_parameters(self):
-        stdv = 1. / math.sqrt(self.weight.size(1))
-        self.weight.data.uniform_(-stdv, stdv)
-        if self.bias is not None:
-            self.bias.data.uniform_(-stdv, stdv)
-
-
     def forward(self, input):
-        # See the autograd section for explanation of what happens here.
-        return CustomizedLinearFunction.apply(input, self.weight, self.bias, self.mask)
+        return BeliefPropagationVC_Function.apply(input, self.mask)
 
-    def extra_repr(self):
-        # (Optional)Set the extra information about this module. You can test
-        # it by printing an object of this class.
-        return 'input_features={}, output_features={}, bias={}'.format(
-            self.input_features, self.output_features, self.bias is not None
-        )
-
-
-#THIS IS HOW TO CHECK THINGS ARE WORKING RIGHT
-if __name__ == 'check grad':
+#this checks that the gradients are working properly
+if __name__ == '__main__':
     from torch.autograd import gradcheck
 
     # gradcheck takes a tuple of tensors as input, check if your gradient
     # evaluated with these tensors are close enough to numerical
     # approximations and returns True if they all verify this condition.
 
-    customlinear = CustomizedLinearFunction.apply
+    bp_vc = BeliefPropagationVC_Function.apply
+
+    mask = torch.rand(20,20,dtype=torch.double,requires_grad=False)
+    mask = torch.round(mask)
 
     input = (
-            torch.randn(20,20,dtype=torch.double,requires_grad=True),
-            torch.randn(30,20,dtype=torch.double,requires_grad=True),
-            None,
-            None,
+            torch.randn(20,1,dtype=torch.double,requires_grad=True),
+            mask
             )
-    test = gradcheck(customlinear, input, eps=1e-6, atol=1e-4)
+    
+    test = gradcheck(bp_vc, input, eps=1e-6, atol=1e-4)
     print(test)

@@ -1,143 +1,161 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-Created on Tue Apr 30 09:27:59 2019
-
-@author: jacobwinick
-"""
-
-import math
 import numpy as np
 
 import torch
 import torch.nn as nn
 
-#################################
-# Define custome autograd function for masked connection.
-
 class BeliefPropagationCV_Function(torch.autograd.Function):
     """
-    implements x_i,e=(v,c) = tanh ( 1/2 ( w_i,v * l_v + sum( w_i,e,e' x_i-1,e' ) ) )
-    this will be challenging...
+    implements x_i,e=(v,c) = 1/2 ( w_i,v * l_v + sum( w_i,e,e' x_i-1,e' ) )
+    
     this is effectively the message which the variable nodes create based on
     the received info from the check nodes, which is why it's called C->V
     """
 
-    # Note that both forward and backward are @staticmethods
     @staticmethod
-    def forward(ctx, input, input_weight, expanded_llr, expanded_llr_weight, mask):
+    def forward(ctx, input, input_weight, mask, llr, llr_weight, llr_expander):
         
-        #convert tensor to column vector
-        weighted_input = input_weight.mm(input.view(-1, 1))
-        output = .5 * mask.mm(weighted_input) + .5 * expanded_llr.mm(expanded_llr_weight)
+        #weight & mask the input values
+        weighted_input = (mask * input_weight).mm(input.view(-1, 1))
+        
+        #create expanded version of weighted initial LLR estimate
+        #repeat the llr for each message which needs that LLR,
+        #but weights are the same for each LLR
+        expanded_llr = llr_expander.mm(llr_weight.view(-1,1) * llr.view(-1,1))
+        
+        #the output is the sum of the other LLRs, weighted & masked plus the LLR
+        output = .5 * ( expanded_llr.view(-1,1) + weighted_input )
 
-        ctx.save_for_backward(input, input_weight, expanded_llr, expanded_llr_weight, mask)
+        #save the output for the backprop
+        ctx.save_for_backward(input, input_weight, mask, llr, llr_weight, llr_expander)
+        
         return output
 
-    # This function has only a single output, so it gets only one gradient
     @staticmethod
     def backward(ctx, grad_output):
-        # This is a pattern that is very convenient - at the top of backward
-        # unpack saved_tensors and initialize all gradients w.r.t. inputs to
-        # None. Thanks to the fact that additional trailing Nones are
-        # ignored, the return statement is simple even when the function has
-        # optional inputs.
         
-        input, input_weight, expanded_llr, expanded_llr_weight, mask = ctx.saved_tensors
-        grad_input = .5 * input_weight.t().mm(grad_output)
-        grad_input_weight = .5 * 
-        grad_expanded_llr = None
-        grad_expanded_llr_weight = .5 *
+        #load tensors from forward method
+        input, input_weight, mask, llr, llr_weight, llr_expander = ctx.saved_tensors
+        
+        grad_input = .5 * (mask*input_weight).t().mm(grad_output)
+    
+        grad_input_weight = .5 * mask * ( grad_output.view(-1,1).mm(input.view(1,-1)) )
+        
         grad_mask = None
         
-        return grad_input, grad_input_weight, grad_expanded_llr, grad_expanded_llr_weight, grad_mask
+        grad_llr_temp = .5 * llr_expander.mm(llr_weight) * grad_output
+        grad_llr = llr_expander.t().mm(grad_llr_temp)
+        
+        #llr weights are only per node, but there's "duplicate" nodes
+        #so we need to add their gradients together to get the correct grad
+        grad_llr_weight_temp = .5 * llr_expander.mm(llr) * grad_output
+        grad_llr_weight = llr_expander.t().mm(grad_llr_weight_temp)
+        
+        grad_llr_expander = None
+        
+        #note that trailing None in return statment are ignored
+        return grad_input, grad_input_weight, grad_mask, grad_llr, grad_llr_weight, grad_llr_expander
 
 
 class BeliefPropagationCV(nn.Module):
-    def __init__(self, mask, llr):
+    def __init__(self, mask, llr_expander):
         """
-        extended torch.nn module which mask connection.
-
-        mask [torch.tensor]:
-            the shape is (n_output_feature, n_input_feature).
-            the elements are 0 or 1 which declare un-connected or
-            connected.
+        Computes messages at variable nodes in BP
+        
+        Inputs:
+            - mask [torch.tensor]:
+                - shape: input x output
+                - content: elts are 0 or 1 corresponding to a connection
+                           from one layer node to the next
+                
+        Notes:
+            - nn.Parameter is a special kind of tensor that will get
+            automatically registered as the nn.Module's parameter once
+            it's assigned as an attribute. This needs to be done to appear
+            in the .parameters() and to be converted when calling .cuda()
+            nn.Parameter requires gradients by default
         """
         
         super(BeliefPropagationCV, self).__init__()
         
-        self.output_features = mask.shape[0]
-        self.input_features = mask.shape[1]
-
+        self.input_dim = mask.shape[0]
+        self.output_dim = mask.shape[1]
+        
+        #setup mask tensor
         if isinstance(mask, torch.Tensor):
-            self.mask = mask.type(torch.float)
+            self.mask = mask.type(torch.double)
         else:
-            self.mask = torch.tensor(mask, dtype=torch.float)
+            self.mask = torch.tensor(mask, dtype=torch.double)
 
         self.mask = nn.Parameter(self.mask, requires_grad=False)
         
-        
-        if isinstance(llr, torch.Tensor):
-            self.llr = llr.type(torch.float)
+        #setup llr tensor
+        if isinstance(llr_expander, torch.Tensor):
+            self.llr_expander = llr_expander.type(torch.double)
         else:
-            self.llr = torch.tensor(llr, dtype=torch.float)
+            self.llr_expander = torch.tensor(llr_expander, dtype=torch.double)
             
-        self.llr = nn.Parameter(self.mask, requires_grad=False)
+        self.llr_expander = nn.Parameter(self.llr_expander, requires_grad=False)
 
-        # nn.Parameter is a special kind of Tensor, that will get
-        # automatically registered as Module's parameter once it's assigned
-        # as an attribute. Parameters and buffers need to be registered, or
-        # they won't appear in .parameters() (doesn't apply to buffers), and
-        # won't be converted when e.g. .cuda() is called. You can use
-        # .register_buffer() to register buffers.
-        # nn.Parameters require gradients by default.
-        self.weight = nn.Parameter(torch.Tensor(self.output_features, self.input_features))
+        #setup input_weight tensor
+        self.input_weight = nn.Parameter(torch.Tensor(self.output_dim, self.input_dim))
+        
+        #setup llr_weight tensor
+        self.llr_weight = nn.Parameter(torch.Tensor(self.llr_expander.shape[0], 1))
 
-        if bias:
-            self.bias = nn.Parameter(torch.Tensor(self.output_features))
-        else:
-            # You should always register all possible parameters, but the
-            # optional ones can be None if you want.
-            self.register_parameter('bias', None)
-        self.reset_parameters()
+        #initialize parameters
+        self.init_params()
 
-        # mask weight
-        self.weight.data = self.weight.data * self.mask
+        #mask weights
+        self.input_weight.data = self.mask.data * self.input_weight.data
 
-    def reset_parameters(self):
-        stdv = 1. / math.sqrt(self.weight.size(1))
-        self.weight.data.uniform_(-stdv, stdv)
-        if self.bias is not None:
-            self.bias.data.uniform_(-stdv, stdv)
+    #initalizing parameters as constants for now (this is default BP)
+    def init_params(self):
+        self.input_weight.data = torch.tensor([[1]], dtype=torch.double)
+        self.llr_weight.data = torch.tensor([[1]], dtype=torch.double)
 
-
+    """    
+    - input [torch.tensor]:
+        - shape: expanded / duplicated variable node size
+        - content: messages at parity check node 
+    
+    - llr [torch.tensor]:
+        - shape: (# of variable nodes) x 1
+        - content: contains initial llr values received
+        
+    - note:
+        - the above items have been cat'd into a list 0 is input, 1 is llr
+    """
     def forward(self, input):
-        # See the autograd section for explanation of what happens here.
-        return CustomizedLinearFunction.apply(input, self.weight, self.bias, self.mask)
-
-    def extra_repr(self):
-        # (Optional)Set the extra information about this module. You can test
-        # it by printing an object of this class.
-        return 'input_features={}, output_features={}, bias={}'.format(
-            self.input_features, self.output_features, self.bias is not None
-        )
+        return BeliefPropagationCV_Function.apply(input[0], self.input_weight, self.mask, input[1], self.llr_weight, self.llr_expander)
 
 
-#THIS IS HOW TO CHECK THINGS ARE WORKING RIGHT
-if __name__ == 'check grad':
+#this checks that the gradients are working properly
+if __name__ == '__main__':
     from torch.autograd import gradcheck
 
     # gradcheck takes a tuple of tensors as input, check if your gradient
     # evaluated with these tensors are close enough to numerical
     # approximations and returns True if they all verify this condition.
 
-    customlinear = CustomizedLinearFunction.apply
+    bp_cv = BeliefPropagationCV_Function.apply
+    
+    mask = torch.rand(20,20,dtype=torch.double,requires_grad=False)
+    mask = torch.round(mask)
+    
+    llr_expander = np.zeros((20,5))
+    for idx, row in enumerate(llr_expander):
+        llr_expander[idx][np.random.randint(5)] = 1
+        
+    llr_expander = torch.tensor(llr_expander, dtype=torch.double, requires_grad=False)
 
     input = (
-            torch.randn(20,20,dtype=torch.double,requires_grad=True),
-            torch.randn(30,20,dtype=torch.double,requires_grad=True),
-            None,
-            None,
+            torch.randn(20,1,dtype=torch.double,requires_grad=True), #input
+            torch.randn(20,20,dtype=torch.double,requires_grad=True), #input weight
+            mask, #input mask
+            torch.randn(5,1,dtype=torch.double,requires_grad=True), #llr
+            torch.randn(5,1,dtype=torch.double,requires_grad=True), #llr weight
+            llr_expander #llr expander
             )
-    test = gradcheck(customlinear, input, eps=1e-6, atol=1e-4)
+    
+    test = gradcheck(bp_cv, input, eps=1e-6, atol=1e-4)
     print(test)
