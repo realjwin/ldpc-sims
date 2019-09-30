@@ -33,9 +33,9 @@ def genMasks(H):
     
     #nn layer size (mask size)
     num_nodes = np.sum(np.sum(H)) 
-    mask_cv = np.zeros((num_nodes, num_nodes))
     mask_vc = np.zeros((num_nodes, num_nodes))
-    mask_cv_final = np.zeros((H.shape[1], num_nodes))
+    mask_cv = np.zeros((num_nodes, num_nodes))
+    mask_v_final = np.zeros((H.shape[1], num_nodes))
     
     #for each row in parity check matrix
     #get array of non-zero indices and append to c
@@ -56,7 +56,7 @@ def genMasks(H):
 
     #create llr expander
     #this is made on the basis that
-    #the v-nodes are ordered & collated (huh?)
+    #the v-nodes are ordered & collated
     llr_expander_list = [len(i) for i in v]
     llr_expander = np.zeros((np.sum(llr_expander_list),H.shape[1]))
     
@@ -93,10 +93,12 @@ def genMasks(H):
             vlookup[m][n] = counter
             counter += 1
     
-    #mask c -> v
+    #mask v -> c
+    #this is the message variable nodes construct
+    #based on previous c-messages to send to c
     #for each check node
     for m in range(0, len(c)):
-        #for each c-v connection
+        #for each v-c connection
         for n in range(0, len(c[m])):
             #for each v-node that c connects to
             for idx, val in enumerate(v[c[m][n]]):
@@ -107,9 +109,9 @@ def genMasks(H):
                     c_node = clookup[m][n]
                     v_node = vlookup[c[m][n]][idx]
                     
-                    mask_cv[v_node][c_node] = 1
+                    mask_vc[v_node][c_node] = 1
                     
-    #mask c -> v final
+    #mask v -> final
     #this needs to take every message that connects to node v
     #but should not exclude the message of the edge it's going back to
     #if that makes sense. this sucks because I need to understand how
@@ -120,9 +122,9 @@ def genMasks(H):
         for n in range(0, len(c[m])):    
             c_node = clookup[m][n]
             v_node = c[m][n]
-            mask_cv_final[v_node][c_node] = 1
+            mask_v_final[v_node][c_node] = 1
             
-    #mask v -> c
+    #mask c -> v
     for m in range(0, len(v)):
         for n in range(0, len(v[m])):
             for idx, val in enumerate(c[v[m][n]]):
@@ -131,12 +133,16 @@ def genMasks(H):
                     v_node = vlookup[m][n]
                     c_node = clookup[v[m][n]][idx]
                     
-                    mask_vc[c_node][v_node] = 1
+                    mask_cv[c_node][v_node] = 1
 
     
     
+    #mask_vc: num_nodes x num_nodes
+    #mask_cv: num_nodes x num_nodes
+    #mask_v_final: codeword x num_nodes
+    #llr_expander: num_nodes x codeword
     
-    return mask_cv, mask_vc, mask_cv_final, llr_expander
+    return mask_vc, mask_cv, mask_v_final, llr_expander
 
 if __name__ == '__main__':
     #create c & v connection matrices
@@ -144,4 +150,4 @@ if __name__ == '__main__':
     mat_contents = sio.loadmat(filename)
     H = mat_contents['H']
     
-    mask_cv, mask_vc, mask_cv_final, llr_expander = genMasks(H)
+    mask_vc, mask_cv, mask_v_final, llr_expander = genMasks(H)

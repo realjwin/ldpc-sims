@@ -19,16 +19,16 @@ class BeliefPropagation(nn.Module):
         #self.mask_cv = mask_cv ...etc
         
         self.BeliefPropagationIter = nn.Sequential(
-                BeliefPropagationCV(mask_cv, llr_expander),
+                BeliefPropagationVC(mask_vc, llr_expander),
                 nn.Tanh(),
-                BeliefPropagationVC(mask_vc)
+                BeliefPropagationCV(mask_cv)
                 )
         
         self.layers = nn.ModuleList([self.BeliefPropagationIter 
                                      for i in range(0,iterations)])
     
         self.final_layer = nn.Sequential(
-                BeliefPropagationCV(mask_cv_final, np.eye(mask_cv_final.shape[0])),
+                BeliefPropagationVC(mask_v_final, np.eye(mask_v_final.shape[0])),
                 nn.Sigmoid()
                 )
 
