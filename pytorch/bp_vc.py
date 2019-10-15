@@ -16,15 +16,15 @@ class BeliefPropagationVC_Function(torch.autograd.Function):
     def forward(ctx, input, input_weight, mask, llr, llr_weight, llr_expander):
         
         #weight & mask the input values
-        weighted_input = (mask * input_weight).mm(input.view(-1, 1))
+        weighted_input = input.mm((mask * input_weight).t())
         
         #create expanded version of weighted initial LLR estimate
         #repeat the llr for each message which needs that LLR,
         #but weights are the same for each LLR
-        expanded_llr = llr_expander.mm(llr_weight.view(-1,1) * llr.view(-1,1))
+        expanded_llr = (llr_weight * llr).mm(llr_expander.t())
         
         #the output is the sum of the other LLRs, weighted & masked plus the LLR
-        output = .5 * ( expanded_llr.view(-1,1) + weighted_input )
+        output = .5 * ( expanded_llr + weighted_input )
 
         #save the output for the backprop
         ctx.save_for_backward(input, input_weight, mask, llr, llr_weight, llr_expander)
@@ -37,25 +37,25 @@ class BeliefPropagationVC_Function(torch.autograd.Function):
         #load tensors from forward method
         input, input_weight, mask, llr, llr_weight, llr_expander = ctx.saved_tensors
         
-        grad_input = .5 * (mask*input_weight).t().mm(grad_output)
+        grad_input = .5 * grad_output.mm(mask*input_weight)
     
-        grad_input_weight = .5 * mask * ( grad_output.view(-1,1).mm(input.view(1,-1)) )
+        grad_input_weight = .5 * mask * (grad_output.t().mm(input))
         
         grad_mask = None
         
-        grad_llr_temp = .5 * llr_expander.mm(llr_weight) * grad_output
-        grad_llr = llr_expander.t().mm(grad_llr_temp)
+        #this is WRONG why???
+        grad_llr_temp = .5 * grad_output * llr_weight.mm(llr_expander.t())
+        grad_llr = grad_llr_temp.mm(llr_expander)
         
         #llr weights are only per node, but there's "duplicate" nodes
         #so we need to add their gradients together to get the correct grad
-        grad_llr_weight_temp = .5 * llr_expander.mm(llr) * grad_output
-        grad_llr_weight = llr_expander.t().mm(grad_llr_weight_temp)
+        grad_llr_weight_temp = .5 * grad_output * llr.mm(llr_expander.t())
+        grad_llr_weight = grad_llr_weight_temp.mm(llr_expander)
         
         grad_llr_expander = None
         
         #note that trailing None in return statment are ignored
         return grad_input, grad_input_weight, grad_mask, grad_llr, grad_llr_weight, grad_llr_expander
-
 
 class BeliefPropagationVC(nn.Module):
     def __init__(self, mask, llr_expander):
@@ -78,8 +78,8 @@ class BeliefPropagationVC(nn.Module):
         
         super(BeliefPropagationVC, self).__init__()
         
-        self.input_dim = mask.shape[0]
-        self.output_dim = mask.shape[1]
+        self.output_dim = mask.shape[0]
+        self.input_dim = mask.shape[1]
         
         #setup mask tensor
         if isinstance(mask, torch.Tensor):
@@ -98,18 +98,20 @@ class BeliefPropagationVC(nn.Module):
         self.llr_expander = nn.Parameter(self.llr_expander, requires_grad=False)
 
         #setup input_weight tensor
-        self.input_weight = nn.Parameter(torch.Tensor(self.output_dim, self.input_dim))
+        self.input_weight = nn.Parameter(torch.ones([self.output_dim, self.input_dim], dtype=torch.double))
         
         #setup llr_weight tensor
-        self.llr_weight = nn.Parameter(torch.Tensor(self.llr_expander.shape[0], 1))
+        self.llr_weight = nn.Parameter(torch.ones([1, self.llr_expander.shape[1]], dtype=torch.double))
 
         #initialize parameters
-        self.init_params()
+        #not doing rn because this is wrong
+        #self.init_params()
 
         #mask weights
         self.input_weight.data = self.mask.data * self.input_weight.data
 
     #initalizing parameters as constants for now (this is default BP)
+    #NOTE: this function is currently wrong and needs to be done differently
     def init_params(self):
         self.input_weight.data = torch.tensor([[1]], dtype=torch.double)
         self.llr_weight.data = torch.tensor([[1]], dtype=torch.double)
@@ -150,11 +152,11 @@ if __name__ == '__main__':
     llr_expander = torch.tensor(llr_expander, dtype=torch.double, requires_grad=False)
 
     input = (
-            torch.randn(20,1,dtype=torch.double,requires_grad=True), #input
+            torch.randn(100,20,dtype=torch.double,requires_grad=True), #input
             torch.randn(20,20,dtype=torch.double,requires_grad=True), #input weight
             mask, #input mask
-            torch.randn(5,1,dtype=torch.double,requires_grad=True), #llr
-            torch.randn(5,1,dtype=torch.double,requires_grad=True), #llr weight
+            torch.randn(1,5,dtype=torch.double,requires_grad=True), #llr
+            torch.randn(1,5,dtype=torch.double,requires_grad=True), #llr weight
             llr_expander #llr expander
             )
     

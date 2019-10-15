@@ -5,7 +5,7 @@ import torch
 import torch.nn as nn
 
 #################################
-# Define custome autograd function for masked connection.
+##NOTE: This will be so slow on a big matrix due to masking both in fwd & rev
 
 class BeliefPropagationCV_Function(torch.autograd.Function):
     """
@@ -21,53 +21,74 @@ class BeliefPropagationCV_Function(torch.autograd.Function):
     @staticmethod
     def forward(ctx, input, mask):
         
+        input_expanded = input.unsqueeze(1).expand([-1, mask.shape[0], -1])
+        
         #create "inverse" mask to convert 0's to 1's & vice-versa
         #since we're multiplying, after we mask the connections we want
         #we must convert post-mask 0's to the multiplicative identity (i.e. 1)
         inverse_mask = -1 * ( mask - 1 )
         
-        masked_input = mask * input.view(1, -1).expand_as(mask) + inverse_mask
+        #this is to prevent the issue of a 1 being the output of a mult x_i-1, e
+        #when no message is being sent back to the variable node (i.e. when the
+        #variable node is the check node). this corrects the issue by placing
+        #a zero in the product to zero it out.
+        #inverse_mask_correction = torch.prod(inverse_mask, dim=1)
+        #inverse_mask[:,0] = inverse_mask[:,0] - inverse_mask_correction
+        
+        masked_input = mask.expand_as(input_expanded) * input_expanded + inverse_mask.expand_as(input_expanded)
         
         #element wise product of the masked input
         #this is creating the non-fully connected architecture
-        multiplied_input = torch.prod(masked_input, dim=1, keepdim=True)
+        multiplied_input = torch.prod(masked_input, dim=2)
         
         #if min(abs(1-multiplied_input.numpy())) < 1e-6:
         #    print('may have divide by zero error')
         #    print(min(abs(1-multiplied_input.numpy())))
         
+        epsilon = .0000000001
         #it's required that | output_temp | < 1, is this enforced here?
-        multiplied_input = torch.clamp(multiplied_input, -1, 1)
+        multiplied_input = torch.clamp(multiplied_input, -(1-epsilon), (1-epsilon))
         
         #implementation of 2 * atanh (this may not be numerically stable)
         output = np.log(torch.div( 1 + multiplied_input, 1 - multiplied_input ))
         
         #save the output for the backprop
         ctx.save_for_backward(input, mask, multiplied_input)
-        
+
         return output
 
     @staticmethod
     def backward(ctx, grad_output):
         
         #load saved tensors
-        input, mask, multiplied_input = ctx.saved_tensors
+        input, mask, multiplied_input= ctx.saved_tensors
         
         #constant factor for derivative of function
         grad_matrix_const = 2 / (1 - multiplied_input**2)
         
-        #create matrix which represents "almost-correct" derivative
-        #each column has the same "almost-correct" derivative
-        grad_matrix_temp = (grad_matrix_const * multiplied_input).view(1,-1).expand_as(mask.t())
+        #creates 3-d matrix where m[i][:][i] = 1, else m[i][j][k] = 0
+        #this is used to eliminate x[i] during multiplication for gradient purposes
+        grad_matrix_eye = torch.eye(mask.shape[1], dtype=torch.double).unsqueeze(1).expand([-1, mask.shape[0], -1])
         
-        #divide each row by x_i-1,e to get correct derivative since we're
-        #calculating d x_i,e' / d x_i-1,e where e is row index, e' is col index
-        #then mask the connections which don't exist. it is the transpose of mask
-        #because we're doing it "backwards" from the forward direction
-        grad_matrix = mask.t() * ( grad_matrix_temp / input.view(-1,1).expand_as(mask.t()) )
+        #this creates a mask for each x dimension which does not include the x
+        #when multiplying the mask, by effectively computing an xor elt-by-elt
+        grad_matrix_xor = torch.clamp(mask.unsqueeze(0).expand_as(grad_matrix_eye) - grad_matrix_eye, 0)
+        
+        #expand to support multiple x inputs
+        grad_matrix_xor = grad_matrix_xor.unsqueeze(0).expand(input.shape[0], -1, -1, -1)
+        
+        #create the inverse mask since we are multiplying
+        grad_matrix_xor_inverse = -1 * ( grad_matrix_xor - 1)
+        
+        #expand x to the right size
+        input_expanded_xor = input.unsqueeze(1).unsqueeze(1).expand_as(grad_matrix_xor)
+        
+        grad_matrix_temp = torch.transpose(torch.prod(grad_matrix_xor * input_expanded_xor + grad_matrix_xor_inverse, dim=3), 1, 2)
+        
+        grad_matrix = torch.transpose(grad_matrix_const.unsqueeze(1), 1, 2).expand_as(grad_matrix_temp) * mask.expand_as(grad_matrix_temp) * grad_matrix_temp
         
         #compute the gradient wrt grad_output
-        grad_input = grad_matrix.mm(grad_output)
+        grad_input = torch.bmm(grad_output.unsqueeze(1), grad_matrix).squeeze(1)
         
         #mask has no gradient
         grad_mask = None
@@ -96,8 +117,8 @@ class BeliefPropagationCV(nn.Module):
         
         super(BeliefPropagationCV, self).__init__()
         
-        self.input_dim = mask.shape[0]
-        self.output_dim = mask.shape[1]
+        self.output_dim = mask.shape[0]
+        self.input_dim = mask.shape[1]
 
         #setup mask tensor
         if isinstance(mask, torch.Tensor):
@@ -119,12 +140,15 @@ if __name__ == '__main__':
     # approximations and returns True if they all verify this condition.
 
     bp_cv = BeliefPropagationCV_Function.apply
-
-    mask = torch.rand(20,20,dtype=torch.double,requires_grad=False)
+    
+    #torch.manual_seed(3)
+    mask = torch.empty(20, 20, dtype=torch.double,requires_grad=False).uniform_(0, 1)
     mask = torch.round(mask)
+    
+    input_temp = np.random.uniform(-1,1,(2,20))
 
     input = (
-            torch.randn(20,1,dtype=torch.double,requires_grad=True),
+            torch.tensor(input_temp, dtype=torch.double, requires_grad=True),
             mask
             )
     

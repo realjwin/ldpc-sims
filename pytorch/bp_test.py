@@ -52,12 +52,12 @@ if __name__ == "__main__":
     model2 = BeliefPropagation(mask_cv, mask_vc, mask_cv_final, llr_expander, 2)
     model4 = BeliefPropagation(mask_cv, mask_vc, mask_cv_final, llr_expander, 4)
     
-    x = torch.zeros(mask_cv.shape[0], 1, dtype=torch.double, requires_grad=True)
+    x = torch.zeros(1, mask_cv.shape[0], dtype=torch.double, requires_grad=True)
     
     #--- VARIABLES ---#
     
     clamp_value = 1000
-    num_samples = 10000
+    num_samples = 100
     snr_list = [0, 2, 4, 6, 8, 10]
     
     per_md = np.zeros((len(snr_list),1))
@@ -77,7 +77,7 @@ if __name__ == "__main__":
     messagebook, codebook = gen_codebook()
     
     #generate indices corresponding to each message
-    messages = np.random.randint(0, 16, num_samples)
+    messages = np.zeros(num_samples, dtype=np.int) #np.random.randint(0, 16, num_samples)
     
     tx_bits = 2 * codebook[messages] - 1
     
@@ -89,7 +89,7 @@ if __name__ == "__main__":
         
         noise = np.random.normal(0, sigma, tx_bits.shape)
         
-        rx_bits = tx_bits + noise
+        rx_bits = tx_bits #+ noise
         
         #--- RX BITS ---#
         
@@ -105,17 +105,17 @@ if __name__ == "__main__":
             per_md[snr_idx] += np.float(np.abs(message_md - messages[idx]) > 0)
             ber_md[snr_idx] += np.float(np.sum(np.abs(messagebook[message_md] - messagebook[messages[idx]])))        
         
-            llr = torch.tensor(rx_bits_llr[idx], dtype=torch.double, requires_grad=True)
+            llr = torch.tensor(rx_bits_llr[idx], dtype=torch.double, requires_grad=True).unsqueeze(0)
             
-            cbits_nn1 = np.transpose(np.round(model1(x, llr, clamp_value).detach().numpy()))[0]
+            cbits_nn1 = np.round(model1(x, llr, clamp_value).detach().numpy())[0]
             per_nn1[snr_idx] += np.float(np.sum(np.abs(cbits_nn1 - codebook[messages[idx]])) > 0)
             ber_nn1[snr_idx] += np.float(np.sum(np.abs(cbits_nn1[0:4] - messagebook[messages[idx]])))
             
-            cbits_nn2 = np.transpose(np.round(model2(x, llr, clamp_value).detach().numpy()))[0]
+            cbits_nn2 = np.round(model2(x, llr, clamp_value).detach().numpy())[0]
             per_nn2[snr_idx] += np.float(np.sum(np.abs(cbits_nn2 - codebook[messages[idx]])) > 0)
             ber_nn2[snr_idx] += np.float(np.sum(np.abs(cbits_nn2[0:4] - messagebook[messages[idx]])))
             
-            cbits_nn4 = np.transpose(np.round(model4(x, llr, clamp_value).detach().numpy()))[0]
+            cbits_nn4 = np.round(model4(x, llr, clamp_value).detach().numpy())[0]
             per_nn4[snr_idx] += np.float(np.sum(np.abs(cbits_nn4 - codebook[messages[idx]])) > 0)
             ber_nn4[snr_idx] += np.float(np.sum(np.abs(cbits_nn4[0:4] - messagebook[messages[idx]])))
         
@@ -139,8 +139,8 @@ if __name__ == "__main__":
     ax1.semilogy(snr_list, per_nn4)
     
     ax2.set_title('BER')
-    ax2.semilogy(snr_list, ber_md)
-    ax2.semilogy(snr_list, ber_nn1)
+    ax2.semilogy(snr_list, ber_md, '*-')
+    ax2.semilogy(snr_list, ber_nn1, '+-')
     ax2.semilogy(snr_list, ber_nn2)
     ax2.semilogy(snr_list, ber_nn4)
     

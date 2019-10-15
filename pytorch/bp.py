@@ -11,17 +11,17 @@ import torch.nn as nn
 from bp_cv import BeliefPropagationCV
 from bp_vc import BeliefPropagationVC
 
+def pyd(tensor):
+    return tensor.detach().numpy()
+
 class BeliefPropagation(nn.Module):
-    def __init__(self, mask_cv, mask_vc, mask_cv_final, llr_expander, iterations):
+    def __init__(self, mask_c, mask_v, mask_v_final, llr_expander, iterations):
         super(BeliefPropagation, self).__init__()
         
-        #do i need to setup internal variables?
-        #self.mask_cv = mask_cv ...etc
-        
         self.BeliefPropagationIter = nn.Sequential(
-                BeliefPropagationVC(mask_vc, llr_expander),
+                BeliefPropagationVC(mask_v, llr_expander),
                 nn.Tanh(),
-                BeliefPropagationCV(mask_cv)
+                BeliefPropagationCV(mask_c)
                 )
         
         self.layers = nn.ModuleList([self.BeliefPropagationIter 
