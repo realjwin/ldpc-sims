@@ -40,17 +40,14 @@ class BeliefPropagationCV_Function(torch.autograd.Function):
         #element wise product of the masked input
         #this is creating the non-fully connected architecture
         multiplied_input = torch.prod(masked_input, dim=2)
-        
-        #if min(abs(1-multiplied_input.numpy())) < 1e-6:
-        #    print('may have divide by zero error')
-        #    print(min(abs(1-multiplied_input.numpy())))
-        
-        epsilon = .0000000001
-        #it's required that | output_temp | < 1, is this enforced here?
+
+        epsilon = .0000001
+
+        #it's required that | output_temp | < 1, enforced with epislon
         multiplied_input = torch.clamp(multiplied_input, -(1-epsilon), (1-epsilon))
         
         #implementation of 2 * atanh (this may not be numerically stable)
-        output = np.log(torch.div( 1 + multiplied_input, 1 - multiplied_input ))
+        output = torch.div( 1 + multiplied_input, 1 - multiplied_input ).log_()
         
         #save the output for the backprop
         ctx.save_for_backward(input, mask, multiplied_input)

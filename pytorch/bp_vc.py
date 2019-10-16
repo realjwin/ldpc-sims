@@ -16,7 +16,7 @@ class BeliefPropagationVC_Function(torch.autograd.Function):
     def forward(ctx, input, input_weight, mask, llr, llr_weight, llr_expander):
         
         #weight & mask the input values
-        weighted_input = input.mm((mask * input_weight).t())
+        weighted_input = input.mm((mask * input_weight).t_())
         
         #create expanded version of weighted initial LLR estimate
         #repeat the llr for each message which needs that LLR,
@@ -103,18 +103,8 @@ class BeliefPropagationVC(nn.Module):
         #setup llr_weight tensor
         self.llr_weight = nn.Parameter(torch.ones([1, self.llr_expander.shape[1]], dtype=torch.double))
 
-        #initialize parameters
-        #not doing rn because this is wrong
-        #self.init_params()
-
         #mask weights
         self.input_weight.data = self.mask.data * self.input_weight.data
-
-    #initalizing parameters as constants for now (this is default BP)
-    #NOTE: this function is currently wrong and needs to be done differently
-    def init_params(self):
-        self.input_weight.data = torch.tensor([[1]], dtype=torch.double)
-        self.llr_weight.data = torch.tensor([[1]], dtype=torch.double)
 
     """    
     - input [torch.tensor]:
