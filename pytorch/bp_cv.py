@@ -63,9 +63,12 @@ class BeliefPropagationCV_Function(torch.autograd.Function):
         #constant factor for derivative of function
         grad_matrix_const = 2 / (1 - multiplied_input**2)
         
+        #cuda stuff
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        
         #creates 3-d matrix where m[i][:][i] = 1, else m[i][j][k] = 0
         #this is used to eliminate x[i] during multiplication for gradient purposes
-        grad_matrix_eye = torch.eye(mask.shape[1], dtype=torch.double).unsqueeze(1).expand([-1, mask.shape[0], -1])
+        grad_matrix_eye = torch.eye(mask.shape[1], dtype=torch.double, device=device).unsqueeze(1).expand([-1, mask.shape[0], -1])
         
         #this creates a mask for each x dimension which does not include the x
         #when multiplying the mask, by effectively computing an xor elt-by-elt

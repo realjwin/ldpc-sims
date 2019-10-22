@@ -15,7 +15,7 @@ def pyd(tensor):
     return tensor.detach().numpy()
 
 def ber_sum(y_est, y):
-    y_est_np = -1*np.round(pyd(y_est)) + 1
+    y_est_np = np.round(pyd(y_est))
     y = pyd(y)
     
     return np.sum(np.abs(y - y_est_np).flatten())
@@ -28,20 +28,21 @@ def importData(filename):
     iterations = mat_contents['iterations'].flatten()
     ber = mat_contents['ber_final']
     num_blocks = mat_contents['num_blocks'].flatten()[0]
-    return cbits, rscbits, snrdb, iterations, ber, num_blocks
+    rbits_final = mat_contents['rbits_final']
+    return cbits, rscbits, snrdb, iterations, ber, num_blocks, rbits_final
 
 if __name__ == "__main__":
     
     #--- LOAD MATLAB ---#
     
     #parity check matrix
-    filename = '../parity.mat'
+    filename = '../parity1.mat'
     mat_contents = sio.loadmat(filename)
     H = mat_contents['H']
     
     #data (input: 1 codeword, output: 1 codeword, retrain each SNR - for now)
-    filename = '../data/ldpc/20191016-1133_n=10000.mat'
-    cbits, rscbits, snrdb, iterations, ber_matlab, num_blocks = importData(filename)
+    filename = '../data/ldpc/20191022-1400_n=10000.mat'
+    cbits, rscbits, snrdb, iterations, ber_matlab, num_blocks, rbits_final = importData(filename)
 
     #--- VARIABLES ---#
 
@@ -96,7 +97,9 @@ if __name__ == "__main__":
                 with torch.no_grad():
                     y_est = model(x, llr, clamp_value)
                     
-                    ber_nn[bp_idx][snr_idx] += ber_sum(y_est.cpu(), y)
+                    ber_nn[bp_idx][snr_idx] += ber_sum(y_est.cpu()[:, 0:32], y[:, 0:32])
+                    
+                    #ber_matlab[bp_idx][snr_idx] += ber_sum(np.transpose(rbits_final[bp_idx][snr_idx][:, batch*batch_size:(batch+1)*batch_size]), y)
                     
                 del x
                 del llr
@@ -107,11 +110,11 @@ if __name__ == "__main__":
             
             del model
             
-    ber_nn /= (num_samples*648)
+    ber_nn /= (num_samples*32)
     
     #save ber numbers for plotting
-    ts = datetime.now()
-    filename = ts.strftime('%Y%m%d-%H%M%S') + '_ber.pkl'
+    ts = datetime.datetime.now()
+    filename = 'results/' + ts.strftime('%Y%m%d-%H%M%S') + '_ber.pkl'
     
     with open(filename, 'wb') as f:
         save_dict = {'ber_nn': ber_nn, 'ber_matlab': ber_matlab, 'bp': iterations, 'snr': snrdb}
