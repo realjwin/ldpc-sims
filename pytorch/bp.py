@@ -6,6 +6,7 @@ Created on Tue Sep 24 11:48:40 2019
 @author: jacobwinick
 """
 
+import copy
 import numpy as np
 import torch.nn as nn
 from bp_cv import BeliefPropagationCV
@@ -23,8 +24,8 @@ class BeliefPropagation(nn.Module):
                 nn.Tanh(),
                 BeliefPropagationCV(mask_c)
                 )
-        
-        self.layers = nn.ModuleList([self.BeliefPropagationIter 
+
+        self.layers = nn.ModuleList([copy.deepcopy(self.BeliefPropagationIter)
                                      for i in range(0,iterations)])
     
         self.final_layer = nn.Sequential(
