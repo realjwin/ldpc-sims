@@ -152,8 +152,8 @@ if __name__ == '__main__':
     mat_contents = sio.loadmat(filename)
     H = mat_contents['H']
     
-    H = np.array([[1, 1, 0, 1, 1, 0, 0],
-              [0, 1, 1, 1, 0, 1, 0],
-              [1, 1, 1, 0, 0, 0, 1]])
+#    H = np.array([[1, 1, 0, 1, 1, 0, 0],
+#              [0, 1, 1, 1, 0, 1, 0],
+#              [1, 1, 1, 0, 0, 0, 1]])
     
     mask_c, mask_v, mask_v_final, llr_expander = genMasks(H)

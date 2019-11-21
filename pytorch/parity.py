@@ -42,3 +42,6 @@ H = np.array([
 P = H[:,0:32]
 
 G = np.transpose(np.concatenate((np.eye(32), np.transpose(P)), axis=1))
+
+block_size = 64
+rate = 1/2
