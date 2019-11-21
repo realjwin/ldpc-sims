@@ -11,9 +11,12 @@ def encode_bits(bits, generator_matrix):
     return cbits.T.reshape((1,-1))
     
 def modulate_bits(bits):
-    bits = bits.reshape((-1, 2))
+    bits = -2 * bits.reshape((-1, 2)) + 1 #(0 -> 1, 1 -> -1)
     
-    return np.array([qpsk_mapping[tuple(b)] for b in bits]).reshape((1,-1))
+    symbols = (1/np.sqrt(2))*bits[:,0] + (1j/np.sqrt(2))*bits[:,1]
+    
+    return symbols.reshape((1, -1))
+    #return np.array([qpsk_mapping[tuple(b)] for b in bits]).reshape((1,-1))
     
 def transmit_symbols(symbols, ofdm_size, snr):
     symbols = symbols.reshape((-1, ofdm_size)).T

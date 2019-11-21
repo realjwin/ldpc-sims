@@ -5,9 +5,11 @@ import matplotlib.pyplot as plt
 import torch
 import torch.nn as nn
 import torch.optim as optim
+import torch.nn.functional as F
 
 from ofdm_variables import *
 from ofdm_functions import *
+from parity import *
 
 class LLRestimator(nn.Module):
     def __init__(self, ofdm_size, snr_est):
@@ -16,17 +18,19 @@ class LLRestimator(nn.Module):
         self.ofdm_size = ofdm_size
         self.snr_est = snr_est
         
+        self.leaky_relu = nn.LeakyReLU()
+        
         self.initial_bias = nn.Parameter(torch.zeros(1, 2*self.ofdm_size, out=None, dtype=torch.float, requires_grad=True))
         
         self.fft_layer = nn.Linear(2*self.ofdm_size, 2*self.ofdm_size, bias=True)
         
-        self.leaky_relu = nn.LeakyReLU()
+        self.hidden1 = nn.Linear(2*self.ofdm_size, 8*self.ofdm_size, bias=True)
+        self.hidden2 = nn.Linear(8*self.ofdm_size, 8*self.ofdm_size, bias=True)
+        self.hidden3 = nn.Linear(8*self.ofdm_size, 2*self.ofdm_size, bias=True)
         
         self.weighted_scalar = nn.Parameter(torch.zeros(1, 2*self.ofdm_size, out=None, dtype=torch.float, requires_grad=True))
         
         self.llr_layer = nn.Linear(2*self.ofdm_size, 2*self.ofdm_size, bias=True)
-        
-        self.final_layer = nn.Linear(2*self.ofdm_size, 2*self.ofdm_size)
         
         #initialized parameters
         self.init_parameters()
@@ -39,51 +43,47 @@ class LLRestimator(nn.Module):
         #weighted scalar
         self.weighted_scalar.data = torch.tensor(2*self.snr_est, dtype=torch.float, requires_grad=True).expand_as(self.weighted_scalar.data)
         
-        #1/
-        #-2/(np.sqrt(2)*.05)
-        #(-2 / np.sqrt(2))
-        
         #llr layer
         self.llr_layer.weight.data = torch.tensor((-2/np.sqrt(2)) * np.eye(2*self.ofdm_size), dtype=torch.float, requires_grad=True)
-        
-        #final layer
-        self.final_layer.weight.data = torch.tensor(np.eye(2*self.ofdm_size), dtype=torch.float, requires_grad=True)
         
     def forward(self, x):
         x = x + self.initial_bias
         x = self.fft_layer(x)
-        x = self.leaky_relu(x)
+        x = self.leaky_relu(self.hidden1(x))
+        x = self.leaky_relu(self.hidden2(x))
+        x = self.leaky_relu(self.hidden3(x))
         x = self.weighted_scalar * x
         x = self.llr_layer(x)
-        x = self.final_layer(x)
         
-        return x #torch.tanh(x)
+        return torch.tanh(x)
     
 
 #--- VARIABLES ---#
 
-snrdb = 5
+snrdb = -3
 snr = np.power(10, snrdb / 10)
 
 ofdm_size = 32
 
-num_samples = np.power(2, 22)
+train_samples = np.power(2, 18) #22
+test_samples = np.power(2, 16)
+num_epochs = 400
+batch_size = np.power(2, 13) #16
+num_batches = np.power(2, 5)
+
+num_samples = train_samples + test_samples
 num_bits = 2 * num_samples * ofdm_size
-
-num_epochs = 500
-batch_pct = .5
-train_pct = .75
-
-train_idx = np.int(num_samples*train_pct)
-batch_size = np.int(train_idx*batch_pct)
-num_batches = np.int(train_idx / batch_size)
+train_idx = train_samples
 
 num_qbits = 2
 clip_pct = 1
+tanh_scale = .1
 
 #--- GENERATE DATA ---#
 
-bits = create_bits(num_bits)
+bits = create_bits(num_bits//2)
+
+bits = encode_bits(bits, G)
 
 tx_symbols = modulate_bits(bits)
 
@@ -100,38 +100,52 @@ qrx_llrs, qrx_symbols = demodulate_signal(qrx_signal, ofdm_size, snr)
 
 rx_bits = .5*np.sign(rx_llrs) + .5
 
-ber = compute_ber(rx_bits, bits)
+#ber = compute_ber(rx_bits, bits)
 
-num_plot = 100
-plt.subplots(1,2,figsize=(12,5))
-plt.subplot(1,2,1)
-plt.plot(rx_signal.real[:,0:num_plot].flatten(), 'r')
-plt.plot(qrx_signal.real[:,0:num_plot].flatten(), 'b')
-plt.subplot(1,2,2)
-plt.plot(rx_signal.imag[:,0:num_plot].flatten(), 'r')
-plt.plot(qrx_signal.imag[:, 0:num_plot].flatten(), 'b')
-plt.show()
+#num_plot = 100
+#plt.subplots(1,2,figsize=(12,5))
+#plt.subplot(1,2,1)
+#plt.plot(rx_signal.real[:,0:num_plot].flatten(), 'r')
+#plt.plot(qrx_signal.real[:,0:num_plot].flatten(), 'b')
+#plt.subplot(1,2,2)
+#plt.plot(rx_signal.imag[:,0:num_plot].flatten(), 'r')
+#plt.plot(qrx_signal.imag[:, 0:num_plot].flatten(), 'b')
+#plt.show()
 #plot decision boundaries
 
+rx_llr_hist = np.tanh(rx_llrs)
+
+plt.hist(rx_llr_hist[0, 0:1000], bins=200, range=(-1,1))
+plt.show()
 
 #--- NN TRAINING ---#
 
-LLRest = LLRestimator(ofdm_size, snr)
+#for cuda
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+if torch.cuda.device_count() > 1:
+    print("Using ", torch.cuda.device_count(), "GPUs.")
+    LLRest = nn.DataParallel(LLRestimator(ofdm_size, snr))
+else:
+    LLRest = LLRestimator(ofdm_size, snr)
+    
+#send model to GPU
+LLRest.to(device)
 
 criterion = nn.MSELoss()
-optimizer = optim.Adam(LLRest.parameters(), lr=.001, amsgrad=True)
+optimizer = optim.Adam(LLRest.parameters(), lr=.01, amsgrad=True)
 
 #--- DATA ---#
 signal_temp = np.concatenate((qrx_signal.real.T, qrx_signal.imag.T), axis=1)
 
 input_data = signal_temp.reshape(-1, 2*ofdm_size)
-output_data = rx_llrs.reshape(-1, 2*ofdm_size) #np.tanh(rx_llrs.reshape(-1, 2*ofdm_size))
+output_data = np.tanh(rx_llrs.reshape(-1, 2*ofdm_size))
 
 x_train = torch.tensor(input_data[0:train_idx], dtype=torch.float, requires_grad=True)
 y_train = torch.tensor(output_data[0:train_idx], dtype=torch.float)
 
-x_test = torch.tensor(input_data[train_idx:], dtype=torch.float)
-y_test = torch.tensor(output_data[train_idx:], dtype=torch.float)
+x_test = torch.tensor(input_data[train_idx:], dtype=torch.float, requires_grad=False, device=device)
+y_test = torch.tensor(output_data[train_idx:], dtype=torch.float, requires_grad=False, device=device)
 
 #--- TRAINING ---#
 
@@ -142,8 +156,8 @@ for epoch in range(0, num_epochs):
         start_idx = batch*batch_size
         end_idx = (batch+1)*batch_size
         
-        x_batch = x_train[start_idx:end_idx]
-        y_batch = y_train[start_idx:end_idx]
+        x_batch = torch.tensor(input_data[start_idx:end_idx], dtype=torch.float, requires_grad=True, device=device)
+        y_batch = torch.tensor(output_data[start_idx:end_idx], dtype=torch.float, device=device)
         
         y_est_train = LLRest(x_batch)
         
@@ -169,12 +183,12 @@ for epoch in range(0, num_epochs):
 
 #--- ANALYSIS ---#
 
-#epsilon = .000001
-#llr_est = np.arctanh(np.clip(LLRest(x_test).detach().numpy(), -1+epsilon, 1-epsilon))
-#llr = np.arctanh(np.clip(y_test.detach().numpy(), -1+epsilon, 1-epsilon))
+epsilon = .000001
+llr_est = np.arctanh(np.clip(LLRest(x_test).cpu().detach().numpy(), -1+epsilon, 1-epsilon))
+llr = np.arctanh(np.clip(output_data[train_idx:], -1+epsilon, 1-epsilon))
   
-llr_est = LLRest(x_test).detach().numpy()
-llr = y_test.detach().numpy()
+#llr_est = LLRest(x_test).cpu().detach().numpy()
+#llr = output_data[train_idx:]
 
 #--- WEIGHTED MSE PER CARRIER ---#
 llr_est_reshape = np.reshape(llr_est.T, (-1, 2*llr_est.shape[0]))
