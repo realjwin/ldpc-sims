@@ -134,6 +134,6 @@ def train_nn(input_samples, output_samples, data_timestamp, snrdb, learning_rate
             'loss': train_loss,
             }, filepath)
     
-    del LLREst
+    del LLRest
     
     return filename
