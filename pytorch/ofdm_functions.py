@@ -1,3 +1,4 @@
+import torch
 import numpy as np
 from ofdm_variables import *
 
@@ -88,8 +89,8 @@ def decode_llr(llr, parity_matrix, bp_iterations):
 #    y_est_train = model_train(x_train, llr_train, clamp_value)
 
 
-def weighted_mse(llr_est, llr):
-    return None
+def weighted_mse(llr_est, llr, epsilon):
+    return torch.mean((llr_est - llr)**2 / (torch.abs(llr) + epsilon))
     
 def compute_ber(bits_est, bits):
     return np.sum(np.abs(bits_est - bits)) / bits.size
