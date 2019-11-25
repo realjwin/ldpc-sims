@@ -70,7 +70,7 @@ for snrdb_idx, snrdb_val in enumerate(snrdb):
         
         with open(filename, 'wb') as f:
             save_dict = {
-                    'snrdb': snr_val,
+                    'snrdb': snrdb_val,
                     'qbits': qbit_val,
                     
                     'rx_signal': rx_signal,
@@ -85,5 +85,3 @@ for snrdb_idx, snrdb_val in enumerate(snrdb):
             pickle.dump(save_dict, f)
     
         print(filename)
-    
-    

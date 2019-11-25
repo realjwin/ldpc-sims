@@ -105,13 +105,18 @@ def train_nn(input_samples, output_samples, data_timestamp, snrdb, learning_rate
             loss.backward()
             
             train_loss[epoch] += loss.item()
+            
+            #--- OPTIMIZER STEP ---#
+            optimizer.step()
+            optimizer.zero_grad()
+            
+            del x_batch
+            del y_batch
+            del y_est_train
+            del loss
     
         if np.mod(epoch, 1) == 0:    
             print('[epoch %d] train_loss: %.5f, snr: %.2f, qbits: %d, lr: %.3f' % (epoch + 1, train_loss[epoch] / num_batches, snrdb, qbits, learning_rate))
-    
-        #--- OPTIMIZER STEP ---#
-        optimizer.step()
-        optimizer.zero_grad()
 
     #--- RETURN MODEL PARAMETERS ---#
     
@@ -128,5 +133,7 @@ def train_nn(input_samples, output_samples, data_timestamp, snrdb, learning_rate
             'optimizer_state_dict': optimizer.state_dict(),
             'loss': train_loss,
             }, filepath)
+    
+    del LLREst
     
     return filename

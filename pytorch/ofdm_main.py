@@ -7,15 +7,15 @@ from ofdm_nn import train_nn
 #--- VARIABLES ---#
 
 ofdm_size = 32
-num_epochs = 1 #2000
-batch_size = np.power(2,12) #np.power(2, 15)
+num_epochs = 2000
+batch_size = np.power(2, 15)
 learning_rates = np.array([.01, .1])
 
 filenames = []
 
 #--- LOAD DATA ---#
 
-timestamp = '20191125-134116'
+timestamp = '20191125-140044'
 
 tx_file = timestamp + '_tx.pkl'
 tx_filepath = 'data/' + tx_file
