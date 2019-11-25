@@ -55,7 +55,7 @@ class LLRestimator(nn.Module):
         
         return x 
     
-def train_nn(input_samples, output_samples, datafile, snrdb, learning_rate, qbits, ofdm_size, num_epochs, batch_size):
+def train_nn(input_samples, output_samples, data_timestamp, snrdb, learning_rate, qbits, ofdm_size, num_epochs, batch_size):
     #--- VARIABLES ---#
     
     snr = np.power(10, snrdb / 10)
@@ -122,7 +122,7 @@ def train_nn(input_samples, output_samples, datafile, snrdb, learning_rate, qbit
     
     torch.save({
             'epoch': epoch,
-            'datafile': datafile,
+            'data_timestamp': data_timestamp,
             'batch_size': batch_size,
             'model_state_dict': LLRest.state_dict(),
             'optimizer_state_dict': optimizer.state_dict(),

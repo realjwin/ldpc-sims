@@ -15,29 +15,30 @@ filenames = []
 
 #--- LOAD DATA ---#
 
-datafile = '20191125-120932_samples.pkl'
-datapath = 'data/' + datafile
+timestamp = '20191125-134116'
 
-with open(datapath, 'rb') as f:
+tx_file = timestamp + '_tx.pkl'
+tx_filepath = 'data/' + tx_file
+
+with open(tx_filepath, 'rb') as f:
     data = pickle.load(f)
 
-snrdb = data['snrdb']
-qbits = data['qbits']
-
-tx_symbols = data['tx_symbols']
-
-rx_signal = data['rx_signal']
-rx_symbols = data['rx_symbols']
-rx_llrs = data['rx_llrs']
-
-qrx_signal = data['qrx_signal']
-qrx_symbols = data['qrx_symbols']
-qrx_llrs = data['qrx_llrs']
+    snrdb = data['snrdb']
+    qbits = data['qbits']
 
 #--- TRAIN NN ---#
 
 for qbit_idx, qbit_val in enumerate(qbits):
     for snrdb_idx, snrdb_val in enumerate(snrdb):
+        
+        datapath = 'data/' + timestamp + '_snr={}_qbits={}.pkl'.format(snrdb_val, qbit_val)
+        
+        with open(datapath, 'rb') as f:
+            data = pickle.load(f)
+            
+            rx_llrs = data['rx_llrs']
+            qrx_signal = data['qrx_signal']
+        
         for lr_idx, lr_val in enumerate(learning_rates):
             
             input_samples = np.concatenate((qrx_signal.real.T, qrx_signal.imag.T), axis=1)
@@ -45,7 +46,7 @@ for qbit_idx, qbit_val in enumerate(qbits):
             
             output_samples = rx_llrs.reshape(-1, 2*ofdm_size)
             
-            filename = train_nn(input_samples, output_samples, datafile, snrdb_val, lr_val, qbit_val, ofdm_size, num_epochs, batch_size)
+            filename = train_nn(input_samples, output_samples, timestamp, snrdb_val, lr_val, qbit_val, ofdm_size, num_epochs, batch_size)
             
             filenames.append(filename)
         
