@@ -27,7 +27,6 @@ class LLRestimator(nn.Module):
         self.hidden2 = nn.Linear(8*self.ofdm_size, 2*self.ofdm_size, bias=True)        
         self.hidden3 = nn.Linear(2*self.ofdm_size, 16*self.ofdm_size, bias=True)
         self.hidden4 = nn.Linear(16*self.ofdm_size, 16*self.ofdm_size, bias=True)
-        self.hidden5 = nn.Linear(16*self.ofdm_size, 16*self.ofdm_size, bias=True)
         
         self.final = nn.Linear(16*self.ofdm_size, 2*self.ofdm_size, bias=True)
         
@@ -51,7 +50,6 @@ class LLRestimator(nn.Module):
         
         x = self.activation(self.hidden3(x))
         x = self.activation(self.hidden4(x))
-        x = self.activation(self.hidden5(x))
         
         return self.final(x)
     
@@ -142,8 +140,8 @@ output_data = rx_llrs.reshape(-1, 2*ofdm_size)
 x_train = torch.tensor(input_data[0:train_idx], dtype=torch.float, requires_grad=True)
 y_train = torch.tensor(output_data[0:train_idx], dtype=torch.float)
 
-x_test = torch.tensor(input_data[train_idx:], dtype=torch.float, requires_grad=False, device=device)
-y_test = torch.tensor(output_data[train_idx:], dtype=torch.float, requires_grad=False, device=device)
+#x_test = torch.tensor(input_data[train_idx:], dtype=torch.float, requires_grad=False, device=device)
+#y_test = torch.tensor(output_data[train_idx:], dtype=torch.float, requires_grad=False, device=device)
 
 #--- TRAINING ---#
 
@@ -171,11 +169,16 @@ for epoch in range(0, num_epochs):
         optimizer.step()
         optimizer.zero_grad()
         
+        del x_batch
+        del y_batch
+        del y_batch_train
+        del loss
+        
     #--- TEST ---#
     
-    with torch.no_grad():
-        y_est_test = LLRest(x_test)
-        test_loss = weighted_mse(y_est_test, y_test, 10e-6)
+#    with torch.no_grad():
+#        y_est_test = LLRest(x_test)
+#        test_loss = weighted_mse(y_est_test, y_test, 10e-6)
     
     print('[epoch %d] train_loss: %.3f, test_loss: %.3f' % (epoch + 1, train_loss / num_batches, test_loss))
     
