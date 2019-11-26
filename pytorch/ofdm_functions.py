@@ -27,7 +27,7 @@ def transmit_symbols(symbols, ofdm_size, snr):
     noise = (np.random.normal(0, 1/np.sqrt(snr), ofdm_symbols.shape) +
         1j*np.random.normal(0, 1/np.sqrt(snr), ofdm_symbols.shape)) / np.sqrt(2)
     
-    received_symbols = ofdm_symbols- + noise
+    received_symbols = ofdm_symbols + noise
     
     return received_symbols.T.reshape((1,-1))
 

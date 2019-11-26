@@ -20,7 +20,7 @@ class LLRestimator(nn.Module):
         
         self.activation = nn.ReLU()
         
-        self.fft_layer = nn.Linear(2*self.ofdm_size, 2*self.ofdm_size, bias=True)
+        self.fft_layer = nn.Linear(2*self.ofdm_size, 2*self.ofdm_size, bias=False)
         self.scalar = nn.Parameter(torch.ones(1, 2*self.ofdm_size, out=None, dtype=torch.float, requires_grad=True))
         
         self.hidden1 = nn.Linear(2*self.ofdm_size, 8*self.ofdm_size, bias=True)
@@ -62,8 +62,8 @@ snr = np.power(10, snrdb / 10)
 ofdm_size = 32
 
 train_samples = np.power(2, 18) #22
-test_samples = np.power(2, 15)
-num_epochs = 500
+test_samples = np.power(2, 1)
+num_epochs = 1000
 batch_size = np.power(2, 13) #16
 num_batches = np.power(2, 5)
 
@@ -128,8 +128,8 @@ else:
 #send model to GPU
 LLRest.to(device)
 
-#criterion = nn.MSELoss() using weighted_mse
-optimizer = optim.Adam(LLRest.parameters(), lr=.01, amsgrad=True)
+#criterion = nn.MSELoss() #using weighted_mse
+optimizer = optim.SGD(LLRest.parameters(), lr=.1) #optim.Adam(LLRest.parameters(), lr=.01, amsgrad=True)
 
 #--- DATA ---#
 signal_temp = np.concatenate((rx_signal.real.T, rx_signal.imag.T), axis=1)
@@ -171,7 +171,7 @@ for epoch in range(0, num_epochs):
         
         del x_batch
         del y_batch
-        del y_batch_train
+        del y_est_train
         del loss
         
     #--- TEST ---#
@@ -180,7 +180,7 @@ for epoch in range(0, num_epochs):
 #        y_est_test = LLRest(x_test)
 #        test_loss = weighted_mse(y_est_test, y_test, 10e-6)
     
-    print('[epoch %d] train_loss: %.3f, test_loss: %.3f' % (epoch + 1, train_loss / num_batches, test_loss))
+    print('[epoch %d] train_loss: %.3f' % (epoch + 1, train_loss / num_batches))
     
 
 
@@ -189,9 +189,9 @@ for epoch in range(0, num_epochs):
 #epsilon = .000001
 #llr_est = np.arctanh(np.clip(LLRest(x_test).cpu().detach().numpy(), -1+epsilon, 1-epsilon))
 #llr = np.arctanh(np.clip(output_data[train_idx:], -1+epsilon, 1-epsilon))
-  
-#llr_est = LLRest(x_test).cpu().detach().numpy()
-#llr = output_data[train_idx:]
+
+llr_est = LLRest(x_train).cpu().detach().numpy()
+llr = output_data[0:train_idx]
 
 #--- WEIGHTED MSE PER CARRIER ---#
 #llr_est_reshape = np.reshape(llr_est.T, (-1, 2*llr_est.shape[0]))
