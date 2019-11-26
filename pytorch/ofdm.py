@@ -18,19 +18,18 @@ class LLRestimator(nn.Module):
         self.ofdm_size = ofdm_size
         self.snr_est = snr_est
         
-        self.leaky_relu = nn.LeakyReLU()
-        
-        self.initial_bias = nn.Parameter(torch.zeros(1, 2*self.ofdm_size, out=None, dtype=torch.float, requires_grad=True))
+        self.activation = nn.ReLU()
         
         self.fft_layer = nn.Linear(2*self.ofdm_size, 2*self.ofdm_size, bias=True)
+        self.scalar = nn.Parameter(torch.ones(1, 2*self.ofdm_size, out=None, dtype=torch.float, requires_grad=True))
         
         self.hidden1 = nn.Linear(2*self.ofdm_size, 8*self.ofdm_size, bias=True)
-        self.hidden2 = nn.Linear(8*self.ofdm_size, 8*self.ofdm_size, bias=True)
-        self.hidden3 = nn.Linear(8*self.ofdm_size, 2*self.ofdm_size, bias=True)
+        self.hidden2 = nn.Linear(8*self.ofdm_size, 2*self.ofdm_size, bias=True)        
+        self.hidden3 = nn.Linear(2*self.ofdm_size, 16*self.ofdm_size, bias=True)
+        self.hidden4 = nn.Linear(16*self.ofdm_size, 16*self.ofdm_size, bias=True)
+        self.hidden5 = nn.Linear(16*self.ofdm_size, 16*self.ofdm_size, bias=True)
         
-        self.weighted_scalar = nn.Parameter(torch.zeros(1, 2*self.ofdm_size, out=None, dtype=torch.float, requires_grad=True))
-        
-        self.llr_layer = nn.Linear(2*self.ofdm_size, 2*self.ofdm_size, bias=True)
+        self.final = nn.Linear(16*self.ofdm_size, 2*self.ofdm_size, bias=True)
         
         #initialized parameters
         self.init_parameters()
@@ -41,21 +40,20 @@ class LLRestimator(nn.Module):
         self.fft_layer.weight.data = torch.tensor(DFTreal(self.ofdm_size), dtype=torch.float, requires_grad=True)
         
         #weighted scalar
-        self.weighted_scalar.data = torch.tensor(2*self.snr_est, dtype=torch.float, requires_grad=True).expand_as(self.weighted_scalar.data)
-        
-        #llr layer
-        self.llr_layer.weight.data = torch.tensor((-2/np.sqrt(2)) * np.eye(2*self.ofdm_size), dtype=torch.float, requires_grad=True)
+        self.scalar.data = torch.tensor(2*self.snr_est * (-2/np.sqrt(2)), dtype=torch.float, requires_grad=True).expand_as(self.scalar.data)
         
     def forward(self, x):
-        x = x + self.initial_bias
-        x = self.fft_layer(x)
-        x = self.leaky_relu(self.hidden1(x))
-        x = self.leaky_relu(self.hidden2(x))
-        x = self.leaky_relu(self.hidden3(x))
-        x = self.weighted_scalar * x
-        x = self.llr_layer(x)
+        x = self.activation(self.hidden1(x))
+        x = self.activation(self.hidden2(x))
         
-        return x 
+        x = self.fft_layer(x)
+        x = self.scalar * x
+        
+        x = self.activation(self.hidden3(x))
+        x = self.activation(self.hidden4(x))
+        x = self.activation(self.hidden5(x))
+        
+        return self.final(x)
     
 
 #--- VARIABLES ---#
@@ -67,7 +65,7 @@ ofdm_size = 32
 
 train_samples = np.power(2, 18) #22
 test_samples = np.power(2, 15)
-num_epochs = 20
+num_epochs = 500
 batch_size = np.power(2, 13) #16
 num_batches = np.power(2, 5)
 
@@ -139,7 +137,7 @@ optimizer = optim.Adam(LLRest.parameters(), lr=.01, amsgrad=True)
 signal_temp = np.concatenate((rx_signal.real.T, rx_signal.imag.T), axis=1)
 
 input_data = signal_temp.reshape(-1, 2*ofdm_size)
-output_data = np.tanh(rx_llrs.reshape(-1, 2*ofdm_size))
+output_data = rx_llrs.reshape(-1, 2*ofdm_size)
 
 x_train = torch.tensor(input_data[0:train_idx], dtype=torch.float, requires_grad=True)
 y_train = torch.tensor(output_data[0:train_idx], dtype=torch.float)
@@ -169,6 +167,10 @@ for epoch in range(0, num_epochs):
         
         train_loss += loss.item()
         
+        #--- OPTIMIZER STEP ---#
+        optimizer.step()
+        optimizer.zero_grad()
+        
     #--- TEST ---#
     
     with torch.no_grad():
@@ -177,23 +179,21 @@ for epoch in range(0, num_epochs):
     
     print('[epoch %d] train_loss: %.3f, test_loss: %.3f' % (epoch + 1, train_loss / num_batches, test_loss))
     
-    #--- OPTIMIZER STEP ---#
-    optimizer.step()
-    optimizer.zero_grad()
+
 
 #--- ANALYSIS ---#
 
-epsilon = .000001
-llr_est = np.arctanh(np.clip(LLRest(x_test).cpu().detach().numpy(), -1+epsilon, 1-epsilon))
-llr = np.arctanh(np.clip(output_data[train_idx:], -1+epsilon, 1-epsilon))
+#epsilon = .000001
+#llr_est = np.arctanh(np.clip(LLRest(x_test).cpu().detach().numpy(), -1+epsilon, 1-epsilon))
+#llr = np.arctanh(np.clip(output_data[train_idx:], -1+epsilon, 1-epsilon))
   
 #llr_est = LLRest(x_test).cpu().detach().numpy()
 #llr = output_data[train_idx:]
 
 #--- WEIGHTED MSE PER CARRIER ---#
-llr_est_reshape = np.reshape(llr_est.T, (-1, 2*llr_est.shape[0]))
-llr_reshape = np.reshape(llr.T, (-1, 2*llr.shape[0]))
-llr_wmse = np.mean(np.power((llr_est_reshape - llr_reshape) / llr_reshape, 2), axis=1)
+#llr_est_reshape = np.reshape(llr_est.T, (-1, 2*llr_est.shape[0]))
+#llr_reshape = np.reshape(llr.T, (-1, 2*llr.shape[0]))
+#llr_wmse = np.mean(np.power((llr_est_reshape - llr_reshape) / llr_reshape, 2), axis=1)
 
 #plt.bar(np.arange(len(llr_wmse)), llr_wmse, align='center', alpha=0.5)
 #plt.xticks(y_pos, objects)
@@ -205,105 +205,105 @@ llr_wmse = np.mean(np.power((llr_est_reshape - llr_reshape) / llr_reshape, 2), a
 #--- BER PER CARRIER ---#
 #BER + # of Bits Flipped from Unquantized
 
-nnbit = .5*(np.sign(llr_est_reshape) + 1)
-
-qbit = .5*(np.sign(qrx_llrs) + 1)
-qbit = np.reshape(qbit, (-1, 2*ofdm_size))
-qbit = qbit[train_idx:]
-qbit = np.reshape(qbit.T, (-1, 2*qbit.shape[0]))
-
-ubit = .5*(np.sign(llr_reshape) + 1)
-
-bit = np.reshape(bits, (-1, 2*ofdm_size))
-bit = bit[train_idx:]
-bit = np.reshape(bit.T, (-1, 2*bit.shape[0]))
-
-bit_nnvu = np.mean(abs(nnbit-ubit), axis=1)
-bit_qvu = np.mean(abs(qbit-ubit), axis=1)
-
-bit_flip_idx = np.nonzero(abs(nnbit-qbit))
-num_flipped = np.sum(abs(nnbit-qbit), axis=1)
-temp = abs(nnbit - ubit) * abs(nnbit-qbit)
-nnbit_bad = np.sum(temp, axis=1)
-nnbit_good = num_flipped - nnbit_bad
-
-ber_nnbit = np.mean(abs(nnbit-bit), axis=1)
-ber_qbit = np.mean(abs(qbit-bit), axis=1)
-ber_ubit = np.mean(abs(ubit-bit), axis=1)
-
-#NN V Q COMPARISON
-fig, ax = plt.subplots(figsize=(12,5))
-index = np.arange(ofdm_size)
-bar_width = 0.35
-opacity = 0.8
-
-rects1 = plt.bar(index, bit_nnvu, bar_width,
-alpha=opacity,
-color='g',
-label='NN vs. U')
-
-rects2 = plt.bar(index + bar_width, bit_qvu, bar_width,
-alpha=opacity,
-color='b',
-label='Q vs. U')
-
-plt.xlabel('Subcarrier')
-plt.ylabel('Error Rate')
-plt.title('NN vs. Q Comparison')
-plt.legend()
-plt.tight_layout()
-plt.show()
-
-#NN FLIPPED COMPARISON
-fig, ax = plt.subplots(figsize=(12,5))
-index = np.arange(ofdm_size)
-bar_width = 0.35
-opacity = 0.8
-
-rects1 = plt.bar(index, num_flipped, bar_width,
-alpha=opacity,
-color='b',
-label='# NN Bits Flipped')
-
-rects2 = plt.bar(index + bar_width, nnbit_good, bar_width,
-alpha=opacity,
-color='g',
-label='# NN Improvement Bits')
-
-plt.xlabel('Subcarrier')
-plt.ylabel('# of Bits')
-plt.title('NN Flipped Comparison')
-plt.legend()
-plt.tight_layout()
-plt.show()
-
-# create plot
-fig, ax = plt.subplots(figsize=(12,5))
-index = np.arange(ofdm_size)
-bar_width = 0.25
-opacity = 0.8
-
-rects1 = plt.bar(index, ber_ubit, bar_width,
-alpha=opacity,
-color='k',
-label='U')
-
-rects2 = plt.bar(index + bar_width, ber_qbit, bar_width,
-alpha=opacity,
-color='b',
-label='Q')
-
-rects3 = plt.bar(index + 2*bar_width, ber_nnbit, bar_width,
-alpha=opacity,
-color='g',
-label='NN')
-
-plt.xlabel('Subcarrier')
-plt.ylabel('BER')
-plt.title('BER Comparison')
-plt.legend()
-plt.tight_layout()
-plt.show()
+#nnbit = .5*(np.sign(llr_est_reshape) + 1)
+#
+#qbit = .5*(np.sign(qrx_llrs) + 1)
+#qbit = np.reshape(qbit, (-1, 2*ofdm_size))
+#qbit = qbit[train_idx:]
+#qbit = np.reshape(qbit.T, (-1, 2*qbit.shape[0]))
+#
+#ubit = .5*(np.sign(llr_reshape) + 1)
+#
+#bit = np.reshape(bits, (-1, 2*ofdm_size))
+#bit = bit[train_idx:]
+#bit = np.reshape(bit.T, (-1, 2*bit.shape[0]))
+#
+#bit_nnvu = np.mean(abs(nnbit-ubit), axis=1)
+#bit_qvu = np.mean(abs(qbit-ubit), axis=1)
+#
+#bit_flip_idx = np.nonzero(abs(nnbit-qbit))
+#num_flipped = np.sum(abs(nnbit-qbit), axis=1)
+#temp = abs(nnbit - ubit) * abs(nnbit-qbit)
+#nnbit_bad = np.sum(temp, axis=1)
+#nnbit_good = num_flipped - nnbit_bad
+#
+#ber_nnbit = np.mean(abs(nnbit-bit), axis=1)
+#ber_qbit = np.mean(abs(qbit-bit), axis=1)
+#ber_ubit = np.mean(abs(ubit-bit), axis=1)
+#
+##NN V Q COMPARISON
+#fig, ax = plt.subplots(figsize=(12,5))
+#index = np.arange(ofdm_size)
+#bar_width = 0.35
+#opacity = 0.8
+#
+#rects1 = plt.bar(index, bit_nnvu, bar_width,
+#alpha=opacity,
+#color='g',
+#label='NN vs. U')
+#
+#rects2 = plt.bar(index + bar_width, bit_qvu, bar_width,
+#alpha=opacity,
+#color='b',
+#label='Q vs. U')
+#
+#plt.xlabel('Subcarrier')
+#plt.ylabel('Error Rate')
+#plt.title('NN vs. Q Comparison')
+#plt.legend()
+#plt.tight_layout()
+#plt.show()
+#
+##NN FLIPPED COMPARISON
+#fig, ax = plt.subplots(figsize=(12,5))
+#index = np.arange(ofdm_size)
+#bar_width = 0.35
+#opacity = 0.8
+#
+#rects1 = plt.bar(index, num_flipped, bar_width,
+#alpha=opacity,
+#color='b',
+#label='# NN Bits Flipped')
+#
+#rects2 = plt.bar(index + bar_width, nnbit_good, bar_width,
+#alpha=opacity,
+#color='g',
+#label='# NN Improvement Bits')
+#
+#plt.xlabel('Subcarrier')
+#plt.ylabel('# of Bits')
+#plt.title('NN Flipped Comparison')
+#plt.legend()
+#plt.tight_layout()
+#plt.show()
+#
+## create plot
+#fig, ax = plt.subplots(figsize=(12,5))
+#index = np.arange(ofdm_size)
+#bar_width = 0.25
+#opacity = 0.8
+#
+#rects1 = plt.bar(index, ber_ubit, bar_width,
+#alpha=opacity,
+#color='k',
+#label='U')
+#
+#rects2 = plt.bar(index + bar_width, ber_qbit, bar_width,
+#alpha=opacity,
+#color='b',
+#label='Q')
+#
+#rects3 = plt.bar(index + 2*bar_width, ber_nnbit, bar_width,
+#alpha=opacity,
+#color='g',
+#label='NN')
+#
+#plt.xlabel('Subcarrier')
+#plt.ylabel('BER')
+#plt.title('BER Comparison')
+#plt.legend()
+#plt.tight_layout()
+#plt.show()
 
 
 #--- NN PARAMETERS ---#
