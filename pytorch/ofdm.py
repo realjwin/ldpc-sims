@@ -55,7 +55,7 @@ class LLRestimator(nn.Module):
         x = self.weighted_scalar * x
         x = self.llr_layer(x)
         
-        return torch.tanh(x)
+        return x 
     
 
 #--- VARIABLES ---#
@@ -66,8 +66,8 @@ snr = np.power(10, snrdb / 10)
 ofdm_size = 32
 
 train_samples = np.power(2, 18) #22
-test_samples = np.power(2, 16)
-num_epochs = 400
+test_samples = np.power(2, 15)
+num_epochs = 20
 batch_size = np.power(2, 13) #16
 num_batches = np.power(2, 5)
 
@@ -113,10 +113,10 @@ rx_bits = .5*np.sign(rx_llrs) + .5
 #plt.show()
 #plot decision boundaries
 
-rx_llr_hist = np.tanh(rx_llrs)
-
-plt.hist(rx_llr_hist[0, 0:1000], bins=200, range=(-1,1))
-plt.show()
+    #rx_llr_hist = np.tanh(rx_llrs)
+    #
+    #plt.hist(rx_llr_hist[0, 0:1000], bins=200, range=(-1,1))
+    #plt.show()
 
 #--- NN TRAINING ---#
 
@@ -132,11 +132,11 @@ else:
 #send model to GPU
 LLRest.to(device)
 
-criterion = nn.MSELoss()
+#criterion = nn.MSELoss() using weighted_mse
 optimizer = optim.Adam(LLRest.parameters(), lr=.01, amsgrad=True)
 
 #--- DATA ---#
-signal_temp = np.concatenate((qrx_signal.real.T, qrx_signal.imag.T), axis=1)
+signal_temp = np.concatenate((rx_signal.real.T, rx_signal.imag.T), axis=1)
 
 input_data = signal_temp.reshape(-1, 2*ofdm_size)
 output_data = np.tanh(rx_llrs.reshape(-1, 2*ofdm_size))
@@ -164,7 +164,7 @@ for epoch in range(0, num_epochs):
         #if I use MSE then the loss should be inversely proportional to
         #the magnitude becuase I don't really care if the LLR is correct
         #and already very large, basically I need a custom loss function
-        loss = criterion(y_est_train, y_batch)
+        loss = weighted_mse(y_est_train, y_batch, 10e-6)
         loss.backward()
         
         train_loss += loss.item()
@@ -173,7 +173,7 @@ for epoch in range(0, num_epochs):
     
     with torch.no_grad():
         y_est_test = LLRest(x_test)
-        test_loss = criterion(y_est_test, y_test)
+        test_loss = weighted_mse(y_est_test, y_test, 10e-6)
     
     print('[epoch %d] train_loss: %.3f, test_loss: %.3f' % (epoch + 1, train_loss / num_batches, test_loss))
     
