@@ -1,5 +1,6 @@
 import copy
 import numpy as np
+import datetime as datetime
 import matplotlib.pyplot as plt
 
 import torch
@@ -61,11 +62,11 @@ snr = np.power(10, snrdb / 10)
 
 ofdm_size = 32
 
-train_samples = np.power(2, 18) #22
-test_samples = np.power(2, 16)
+train_samples = np.power(2, 18) #18
+test_samples = np.power(2, 14) #14
 num_epochs = 1000
-batch_size = np.power(2, 13) #16
-num_batches = np.power(2, 5)
+batch_size = np.power(2, 13) #13
+num_batches = np.power(2, 5) #5
 
 num_samples = train_samples + test_samples
 num_bits = 2 * num_samples * ofdm_size
@@ -137,9 +138,6 @@ signal_temp = np.concatenate((rx_signal.real.T, rx_signal.imag.T), axis=1)
 input_data = signal_temp.reshape(-1, 2*ofdm_size)
 output_data = rx_llrs.reshape(-1, 2*ofdm_size)
 
-x_train = torch.tensor(input_data[0:train_idx], dtype=torch.float, requires_grad=True)
-y_train = torch.tensor(output_data[0:train_idx], dtype=torch.float)
-
 x_test = torch.tensor(input_data[train_idx:], dtype=torch.float, requires_grad=False, device=device)
 y_test = torch.tensor(output_data[train_idx:], dtype=torch.float, requires_grad=False, device=device)
 
@@ -151,6 +149,12 @@ epoch = 0
 
 while train_loss > .001:
     train_loss = 0
+    
+    #shuffle data
+    p = np.random.permutation(train_idx)
+    
+    input_data[0:train_idx] = input_data[p]
+    output_data[0:train_idx] = output_data[p]
     
     for batch in range(0, num_batches):
         start_idx = batch*batch_size
@@ -184,13 +188,34 @@ while train_loss > .001:
         with torch.no_grad():
             y_est_test = LLRest(x_test)
             test_loss = weighted_mse(y_est_test, y_test, 10e-6)
+            
+        y_est_bits = np.sign(y_est_test.cpu().detach().numpy())
+        y_bits = np.sign(output_data[train_idx:])
         
-        print('[epoch %d] train_loss: %.3f, test_loss: %.3f' % (epoch + 1, train_loss / num_batches, test_loss))
+        num_flipped = np.sum(np.sum(np.abs(y_est_bits - y_bits)))
+        
+        print('[epoch %d] train_loss: %.3f, test_loss: %.3f, num_flipped: %d' % (epoch + 1, train_loss / num_batches, test_loss, num_flipped))
         
         del y_est_test
         del test_loss
     
     epoch += 1
+    
+#--- SAVE VARIABLES ---#
+    
+ts = datetime.datetime.now()
+    
+filename = ts.strftime('%Y%m%d-%H%M%S') + '_unquantized.pth'
+filepath = 'model/' + filename
+
+torch.save({
+        'epoch': epoch,
+        'batch_size': batch_size,
+        'train_samples': train_samples,
+        'model_state_dict': LLRest.state_dict(),
+        'optimizer_state_dict': optimizer.state_dict(),
+        'loss': train_loss,
+        }, filepath)
 
 #--- ANALYSIS ---#
 
@@ -198,8 +223,8 @@ while train_loss > .001:
 #llr_est = np.arctanh(np.clip(LLRest(x_test).cpu().detach().numpy(), -1+epsilon, 1-epsilon))
 #llr = np.arctanh(np.clip(output_data[train_idx:], -1+epsilon, 1-epsilon))
 
-llr_est = LLRest(x_train).cpu().detach().numpy()
-llr = output_data[0:train_idx]
+#llr_est = LLRest(x_train).cpu().detach().numpy()
+#llr = output_data[0:train_idx]
 
 #--- WEIGHTED MSE PER CARRIER ---#
 #llr_est_reshape = np.reshape(llr_est.T, (-1, 2*llr_est.shape[0]))
