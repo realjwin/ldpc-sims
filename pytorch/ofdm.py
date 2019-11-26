@@ -62,7 +62,7 @@ snr = np.power(10, snrdb / 10)
 ofdm_size = 32
 
 train_samples = np.power(2, 18) #22
-test_samples = np.power(2, 1)
+test_samples = np.power(2, 16)
 num_epochs = 1000
 batch_size = np.power(2, 13) #16
 num_batches = np.power(2, 5)
@@ -140,12 +140,16 @@ output_data = rx_llrs.reshape(-1, 2*ofdm_size)
 x_train = torch.tensor(input_data[0:train_idx], dtype=torch.float, requires_grad=True)
 y_train = torch.tensor(output_data[0:train_idx], dtype=torch.float)
 
-#x_test = torch.tensor(input_data[train_idx:], dtype=torch.float, requires_grad=False, device=device)
-#y_test = torch.tensor(output_data[train_idx:], dtype=torch.float, requires_grad=False, device=device)
+x_test = torch.tensor(input_data[train_idx:], dtype=torch.float, requires_grad=False, device=device)
+y_test = torch.tensor(output_data[train_idx:], dtype=torch.float, requires_grad=False, device=device)
 
 #--- TRAINING ---#
+train_loss = 1 
+epoch = 0
 
-for epoch in range(0, num_epochs):
+#for epoch in range(0, num_epochs):
+
+while train_loss > .001:
     train_loss = 0
     
     for batch in range(0, num_batches):
@@ -176,13 +180,17 @@ for epoch in range(0, num_epochs):
         
     #--- TEST ---#
     
-#    with torch.no_grad():
-#        y_est_test = LLRest(x_test)
-#        test_loss = weighted_mse(y_est_test, y_test, 10e-6)
+    if np.mod(epoch, 100) == 0:
+        with torch.no_grad():
+            y_est_test = LLRest(x_test)
+            test_loss = weighted_mse(y_est_test, y_test, 10e-6)
+        
+        print('[epoch %d] train_loss: %.3f, test_loss: %.3f' % (epoch + 1, train_loss / num_batches, test_loss))
+        
+        del y_est_test
+        del test_loss
     
-    print('[epoch %d] train_loss: %.3f' % (epoch + 1, train_loss / num_batches))
-    
-
+    epoch += 1
 
 #--- ANALYSIS ---#
 
