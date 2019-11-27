@@ -1,6 +1,5 @@
 import torch
 import numpy as np
-from ofdm_variables import *
 
 def create_bits(num_bits):
     return np.random.randint(2, size=num_bits).reshape((1,-1))
@@ -97,3 +96,26 @@ def compute_ber(bits_est, bits):
     
 def compute_per(bits_est, bits, block_size):
     return 0
+
+def DFT(N):  
+    W = np.zeros((N, N), dtype=np.complex)
+    
+    for x in range(0,N):
+        for y in range(0,N): 
+            W[x,y] = np.exp(-1j*2*np.pi*x*y / N) / np.sqrt(N)
+            
+    return W
+
+def DFTreal(N):
+    W = DFT(N)
+    
+    Wr = np.zeros((2*N, 2*N), dtype=np.float)
+    
+    for x in range(0,N):
+        for y in range(0,N):
+            Wr[2*x, 2*y] = W[x,y].real
+            Wr[2*x, 2*y+1] = -W[x,y].imag
+            Wr[2*x+1, 2*y] = W[x,y].imag
+            Wr[2*x+1, 2*y+1] = W[x,y].real
+            
+    return Wr

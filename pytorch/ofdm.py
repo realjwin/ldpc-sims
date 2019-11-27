@@ -3,61 +3,15 @@ import numpy as np
 import datetime as datetime
 import matplotlib.pyplot as plt
 
-import torch
-import torch.nn as nn
 import torch.optim as optim
-import torch.nn.functional as F
 
-from ofdm_variables import *
 from ofdm_functions import *
 from parity import *
-
-class LLRestimator(nn.Module):
-    def __init__(self, ofdm_size, snr_est):
-        super(LLRestimator, self).__init__()
-        
-        self.ofdm_size = ofdm_size
-        self.snr_est = snr_est
-        
-        self.activation = nn.ReLU()
-        
-        self.fft_layer = nn.Linear(2*self.ofdm_size, 2*self.ofdm_size, bias=False)
-        self.scalar = nn.Parameter(torch.ones(1, 2*self.ofdm_size, out=None, dtype=torch.float, requires_grad=True))
-        
-        self.hidden1 = nn.Linear(2*self.ofdm_size, 8*self.ofdm_size, bias=True)
-        self.hidden2 = nn.Linear(8*self.ofdm_size, 2*self.ofdm_size, bias=True)        
-        self.hidden3 = nn.Linear(2*self.ofdm_size, 16*self.ofdm_size, bias=True)
-        self.hidden4 = nn.Linear(16*self.ofdm_size, 16*self.ofdm_size, bias=True)
-        
-        self.final = nn.Linear(16*self.ofdm_size, 2*self.ofdm_size, bias=True)
-        
-        #initialized parameters
-        self.init_parameters()
-        
-    def init_parameters(self):
-        
-        #fft layer
-        self.fft_layer.weight.data = torch.tensor(DFTreal(self.ofdm_size), dtype=torch.float, requires_grad=True)
-        
-        #weighted scalar
-        self.scalar.data = torch.tensor(2*self.snr_est * (-2/np.sqrt(2)), dtype=torch.float, requires_grad=True).expand_as(self.scalar.data)
-        
-    def forward(self, x):
-        x = self.activation(self.hidden1(x))
-        x = self.activation(self.hidden2(x))
-        
-        x = self.fft_layer(x)
-        x = self.scalar * x
-        
-        x = self.activation(self.hidden3(x))
-        x = self.activation(self.hidden4(x))
-        
-        return self.final(x)
-    
+from llr import *    
 
 #--- VARIABLES ---#
 
-snrdb = -3
+snrdb = 0
 snr = np.power(10, snrdb / 10)
 
 ofdm_size = 32
@@ -142,12 +96,13 @@ x_test = torch.tensor(input_data[train_idx:], dtype=torch.float, requires_grad=F
 y_test = torch.tensor(output_data[train_idx:], dtype=torch.float, requires_grad=False, device=device)
 
 #--- TRAINING ---#
-train_loss = 1 
+train_loss_list = []
+train_loss = 1
 epoch = 0
 
 #for epoch in range(0, num_epochs):
 
-while train_loss > .001:
+while train_loss > .01:
     train_loss = 0
     
     #shuffle data
@@ -197,12 +152,15 @@ while train_loss > .001:
         print('[epoch %d] train_loss: %.3f, test_loss: %.3f, num_flipped: %d' % (epoch + 1, train_loss / num_batches, test_loss, num_flipped))
         
         del y_est_test
-        del test_loss
+        del test_loss        
     
+    train_loss_list.append(train_loss)
     epoch += 1
     
-#--- SAVE VARIABLES ---#
+print('train loss at epoch {}: {}'.format(epoch + 1, train_loss))
     
+#--- SAVE VARIABLES ---#
+
 ts = datetime.datetime.now()
     
 filename = ts.strftime('%Y%m%d-%H%M%S') + '_unquantized.pth'
@@ -214,9 +172,11 @@ torch.save({
         'train_samples': train_samples,
         'model_state_dict': LLRest.state_dict(),
         'optimizer_state_dict': optimizer.state_dict(),
-        'loss': train_loss,
+        'train_loss_list': train_loss_list,
+        'input_data': input_data,
+        'output_data': output_data
         }, filepath)
-
+    
 #--- ANALYSIS ---#
 
 #epsilon = .000001
