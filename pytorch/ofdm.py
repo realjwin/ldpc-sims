@@ -16,11 +16,11 @@ snr = np.power(10, snrdb / 10)
 
 ofdm_size = 32
 
-train_samples = np.power(2, 18) #18
-test_samples = np.power(2, 14) #14
+train_samples = np.power(2, 10) #18
+test_samples = np.power(2, 8) #14
 num_epochs = 1000
-batch_size = np.power(2, 13) #13
-num_batches = np.power(2, 5) #5
+batch_size = np.power(2, 8) #13
+num_batches = np.power(2, 2) #5
 
 num_samples = train_samples + test_samples
 num_bits = 2 * num_samples * ofdm_size
@@ -84,7 +84,8 @@ else:
 LLRest.to(device)
 
 #criterion = nn.MSELoss() #using weighted_mse
-optimizer = optim.SGD(LLRest.parameters(), lr=.1) #optim.Adam(LLRest.parameters(), lr=.01, amsgrad=True)
+#optimizer = optim.SGD(LLRest.parameters(), lr=.1)
+optimizer = optim.Adam(LLRest.parameters(), lr=.01, amsgrad=True)
 
 #--- DATA ---#
 signal_temp = np.concatenate((rx_signal.real.T, rx_signal.imag.T), axis=1)
@@ -147,12 +148,17 @@ while train_loss > .01:
         y_est_bits = np.sign(y_est_test.cpu().detach().numpy())
         y_bits = np.sign(output_data[train_idx:])
         
-        num_flipped = np.sum(np.sum(np.abs(y_est_bits - y_bits)))
+        num_flipped = np.sum(np.sum(np.abs(y_est_bits - y_bits))) / np.size(y_bits)
+        temp = output_data[train_idx:]
+        flipped_values= temp[np.where(np.abs(y_est_bits - y_bits) == 1)]
         
-        print('[epoch %d] train_loss: %.3f, test_loss: %.3f, num_flipped: %d' % (epoch + 1, train_loss / num_batches, test_loss, num_flipped))
+        print('[epoch %d] train_loss: %.3f, test_loss: %.3f, flipped_ber: %.3f' % (epoch + 1, train_loss / num_batches, test_loss, num_flipped))
         
         del y_est_test
-        del test_loss        
+        del test_loss
+        
+        if np.mod(epoch, 500) == 0:
+            print('pause')
     
     train_loss_list.append(train_loss)
     epoch += 1
