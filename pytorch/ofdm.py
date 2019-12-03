@@ -11,7 +11,7 @@ from llr import *
 
 #--- VARIABLES ---#
 
-snrdb = 0
+snrdb = 0 #np.array([0,1,2,3,4,5,6,7,8,9,10])
 snr = np.power(10, snrdb / 10)
 
 ofdm_size = 32
@@ -86,7 +86,7 @@ LLRest.to(device)
 #criterion = nn.MSELoss() #using weighted_mse
 optimizer = optim.SGD(LLRest.parameters(), lr=.1, momentum=.1)
 #optimizer = optim.Adam(LLRest.parameters(), lr=.01, amsgrad=True)
-scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=100, gamma=.9)
+scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=100, gamma=.98)
 
 #--- DATA ---#
 signal_temp = np.concatenate((rx_signal.real.T, rx_signal.imag.T), axis=1)
@@ -132,7 +132,7 @@ for epoch in range(0, num_epochs):
         #--- OPTIMIZER STEP ---#
         optimizer.step()
         optimizer.zero_grad()
-        #scheduler.step()
+        scheduler.step()
         
         
         del x_batch

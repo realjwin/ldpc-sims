@@ -19,6 +19,7 @@ class LLRestimator(nn.Module):
         self.hidden2 = nn.Linear(8*self.ofdm_size, 2*self.ofdm_size, bias=True)        
         self.hidden3 = nn.Linear(2*self.ofdm_size, 16*self.ofdm_size, bias=True)
         self.hidden4 = nn.Linear(16*self.ofdm_size, 16*self.ofdm_size, bias=True)
+        self.hidden5 = nn.Linear(16*self.ofdm_size, 16*self.ofdm_size, bias=True)
         
         self.final = nn.Linear(16*self.ofdm_size, 2*self.ofdm_size, bias=True)
         
@@ -38,7 +39,7 @@ class LLRestimator(nn.Module):
         self.scalar.data = torch.tensor(2*self.snr_est * (-2/np.sqrt(2)), dtype=torch.float, requires_grad=True).expand_as(self.scalar.data)
         
     def forward(self, x):
-        x = self.fft_layer(x)
+        #x = self.fft_layer(x)
         
         #x = self.activation(self.hidden1(x))
         #x = self.activation(self.hidden2(x))
@@ -49,6 +50,7 @@ class LLRestimator(nn.Module):
         x = self.activation(self.hidden3(x))
         #x = self.bn3(x)
         x = self.activation(self.hidden4(x))
+        x = self.activation(self.hidden5(x))
         #x = self.bn4(x)
         
         return self.final(x)

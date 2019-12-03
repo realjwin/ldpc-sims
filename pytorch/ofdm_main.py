@@ -8,8 +8,8 @@ from ofdm_nn import train_nn
 
 ofdm_size = 32
 num_epochs = 1000
-batch_size = np.power(2, 14)
-learning_rates = np.array([.01, .1])
+batch_size = np.power(2, 13)
+learning_rates = np.array([.01])
 
 filenames = []
 
@@ -66,9 +66,9 @@ for snrdb_idx, snrdb_val in enumerate(snrdb):
     for lr_idx, lr_val in enumerate(learning_rates):
         
         input_samples = np.concatenate((rx_signal.real.T, rx_signal.imag.T), axis=1)
-        input_samples = input_samples.reshape(-1, 2*ofdm_size)
+        input_samples = input_samples.reshape(-1, 2*ofdm_size)[0:2**17]
         
-        output_samples = rx_llrs.reshape(-1, 2*ofdm_size)
+        output_samples = rx_llrs.reshape(-1, 2*ofdm_size)[0:2**17]
         
         filename = train_nn(input_samples, output_samples, timestamp, snrdb_val, lr_val, qbit_val, ofdm_size, num_epochs, batch_size)
         
