@@ -22,11 +22,7 @@ class LLRestimator(nn.Module):
         self.hidden5 = nn.Linear(16*self.ofdm_size, 16*self.ofdm_size, bias=True)
         
         self.final = nn.Linear(16*self.ofdm_size, 2*self.ofdm_size, bias=True)
-        
-        self.bn3 = nn.BatchNorm1d(16*self.ofdm_size)
-        self.bn4 = nn.BatchNorm1d(16*self.ofdm_size)
-        
-        
+
         #initialized parameters
         self.init_parameters()
         
@@ -47,10 +43,9 @@ class LLRestimator(nn.Module):
         #x = self.fft_layer(x)
         #x = self.scalar * x
         
+        x = self.fft_layer(x)
         x = self.activation(self.hidden3(x))
-        #x = self.bn3(x)
         x = self.activation(self.hidden4(x))
         x = self.activation(self.hidden5(x))
-        #x = self.bn4(x)
         
         return self.final(x)

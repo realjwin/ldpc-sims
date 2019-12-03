@@ -2,60 +2,12 @@ import numpy as np
 import datetime as datetime
 
 import torch
-import torch.nn as nn
 import torch.optim as optim
-import torch.nn.functional as F
 
-from ofdm_variables import *
+from llr import LLRestimator
 from ofdm_functions import *
 
-class LLRestimator(nn.Module):
-    def __init__(self, ofdm_size, snr_est):
-        super(LLRestimator, self).__init__()
-        
-        self.ofdm_size = ofdm_size
-        self.snr_est = snr_est
-        
-        self.leaky_relu = nn.LeakyReLU()
-        
-        self.initial_bias = nn.Parameter(torch.zeros(1, 2*self.ofdm_size, out=None, dtype=torch.float, requires_grad=True))
-        
-        self.fft_layer = nn.Linear(2*self.ofdm_size, 2*self.ofdm_size, bias=True)
-        
-        self.hidden1 = nn.Linear(2*self.ofdm_size, 8*self.ofdm_size, bias=True)
-        self.hidden2 = nn.Linear(8*self.ofdm_size, 8*self.ofdm_size, bias=True)
-        self.hidden3 = nn.Linear(8*self.ofdm_size, 2*self.ofdm_size, bias=True)
-        
-        self.weighted_scalar = nn.Parameter(torch.zeros(1, 2*self.ofdm_size, out=None, dtype=torch.float, requires_grad=True))
-        
-        self.llr_layer = nn.Linear(2*self.ofdm_size, 2*self.ofdm_size, bias=True)
-        
-        #initialized parameters
-        self.init_parameters()
-        
-    def init_parameters(self):
-        
-        #fft layer
-        self.fft_layer.weight.data = torch.tensor(DFTreal(self.ofdm_size), dtype=torch.float, requires_grad=True)
-        
-        #weighted scalar
-        self.weighted_scalar.data = torch.tensor(2*self.snr_est, dtype=torch.float, requires_grad=True).expand_as(self.weighted_scalar.data)
-        
-        #llr layer
-        self.llr_layer.weight.data = torch.tensor((-2/np.sqrt(2)) * np.eye(2*self.ofdm_size), dtype=torch.float, requires_grad=True)
-        
-    def forward(self, x):
-        x = x + self.initial_bias
-        x = self.fft_layer(x)
-        x = self.leaky_relu(self.hidden1(x))
-        x = self.leaky_relu(self.hidden2(x))
-        x = self.leaky_relu(self.hidden3(x))
-        x = self.weighted_scalar * x
-        x = self.llr_layer(x)
-        
-        return x 
-    
-def train_nn(input_samples, output_samples, data_timestamp, snrdb, learning_rate, qbits, ofdm_size, num_epochs, batch_size):
+def train_nn(input_samples, output_samples, data_timestamp, snrdb, learning_rate, qbits, ofdm_size, num_epochs, batch_size, load_model=None):
     #--- VARIABLES ---#
     
     snr = np.power(10, snrdb / 10)
@@ -76,7 +28,8 @@ def train_nn(input_samples, output_samples, data_timestamp, snrdb, learning_rate
     #send model to GPU
     LLRest.to(device)
 
-    optimizer = optim.Adam(LLRest.parameters(), lr=learning_rate, amsgrad=True)
+    optimizer = optim.SGD(LLRest.parameters(), lr=learning_rate)
+    #optimizer = optim.Adam(LLRest.parameters(), lr=learning_rate, amsgrad=True)
 
     #--- TRAINING ---#
     

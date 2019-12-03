@@ -68,7 +68,7 @@ class BeliefPropagationCV_Function(torch.autograd.Function):
         
         #creates 3-d matrix where m[i][:][i] = 1, else m[i][j][k] = 0
         #this is used to eliminate x[i] during multiplication for gradient purposes
-        grad_matrix_eye = torch.eye(mask.shape[1], dtype=torch.double, device=device).unsqueeze(1).expand([-1, mask.shape[0], -1])
+        grad_matrix_eye = torch.eye(mask.shape[1], dtype=torch.float, device=device).unsqueeze(1).expand([-1, mask.shape[0], -1])
         
         #this creates a mask for each x dimension which does not include the x
         #when multiplying the mask, by effectively computing an xor elt-by-elt
@@ -122,9 +122,9 @@ class BeliefPropagationCV(nn.Module):
 
         #setup mask tensor
         if isinstance(mask, torch.Tensor):
-            self.mask = mask.type(torch.double)
+            self.mask = mask.type(torch.float)
         else:
-            self.mask = torch.tensor(mask, dtype=torch.double)
+            self.mask = torch.tensor(mask, dtype=torch.float)
 
         self.mask = nn.Parameter(self.mask, requires_grad=False)
 
@@ -142,15 +142,15 @@ if __name__ == '__main__':
     bp_cv = BeliefPropagationCV_Function.apply
     
     #torch.manual_seed(3)
-    mask = torch.empty(20, 20, dtype=torch.double,requires_grad=False).uniform_(0, 1)
+    mask = torch.empty(20, 20, dtype=torch.float,requires_grad=False).uniform_(0, 1)
     mask = torch.round(mask)
     
     input_temp = np.random.uniform(-1,1,(2,20))
 
     input = (
-            torch.tensor(input_temp, dtype=torch.double, requires_grad=True),
+            torch.tensor(input_temp, dtype=torch.float, requires_grad=True),
             mask
             )
     
-    test = gradcheck(bp_cv, input, eps=1e-6, atol=1e-4)
+    test = gradcheck(bp_cv, input, eps=1e-3, atol=1e-4)
     print(test)

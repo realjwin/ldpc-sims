@@ -83,25 +83,25 @@ class BeliefPropagationVC(nn.Module):
         
         #setup mask tensor
         if isinstance(mask, torch.Tensor):
-            self.mask = mask.type(torch.double)
+            self.mask = mask.type(torch.float)
         else:
-            self.mask = torch.tensor(mask, dtype=torch.double)
+            self.mask = torch.tensor(mask, dtype=torch.float)
 
         self.mask = nn.Parameter(self.mask, requires_grad=False)
         
         #setup llr tensor
         if isinstance(llr_expander, torch.Tensor):
-            self.llr_expander = llr_expander.type(torch.double)
+            self.llr_expander = llr_expander.type(torch.float)
         else:
-            self.llr_expander = torch.tensor(llr_expander, dtype=torch.double)
+            self.llr_expander = torch.tensor(llr_expander, dtype=torch.float)
             
         self.llr_expander = nn.Parameter(self.llr_expander, requires_grad=False)
 
         #setup input_weight tensor
-        self.input_weight = nn.Parameter(torch.ones([self.output_dim, self.input_dim], dtype=torch.double))
+        self.input_weight = nn.Parameter(torch.ones([self.output_dim, self.input_dim], dtype=torch.float))
         
         #setup llr_weight tensor
-        self.llr_weight = nn.Parameter(torch.ones([1, self.llr_expander.shape[1]], dtype=torch.double))
+        self.llr_weight = nn.Parameter(torch.ones([1, self.llr_expander.shape[1]], dtype=torch.float))
 
         #mask weights
         self.input_weight.data = self.mask.data * self.input_weight.data
@@ -132,21 +132,21 @@ if __name__ == '__main__':
 
     bp_vc = BeliefPropagationVC_Function.apply
     
-    mask = torch.rand(20,20,dtype=torch.double,requires_grad=False)
+    mask = torch.rand(20,20,dtype=torch.float,requires_grad=False)
     mask = torch.round(mask)
     
     llr_expander = np.zeros((20,5))
     for idx, row in enumerate(llr_expander):
         llr_expander[idx][np.random.randint(5)] = 1
         
-    llr_expander = torch.tensor(llr_expander, dtype=torch.double, requires_grad=False)
+    llr_expander = torch.tensor(llr_expander, dtype=torch.float, requires_grad=False)
 
     input = (
-            torch.randn(100,20,dtype=torch.double,requires_grad=True), #input
-            torch.randn(20,20,dtype=torch.double,requires_grad=True), #input weight
+            torch.randn(100,20,dtype=torch.float,requires_grad=True), #input
+            torch.randn(20,20,dtype=torch.float,requires_grad=True), #input weight
             mask, #input mask
-            torch.randn(1,5,dtype=torch.double,requires_grad=True), #llr
-            torch.randn(1,5,dtype=torch.double,requires_grad=True), #llr weight
+            torch.randn(1,5,dtype=torch.float,requires_grad=True), #llr
+            torch.randn(1,5,dtype=torch.float,requires_grad=True), #llr weight
             llr_expander #llr expander
             )
     

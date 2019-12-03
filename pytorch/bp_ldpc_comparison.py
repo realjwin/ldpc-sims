@@ -84,11 +84,11 @@ if __name__ == "__main__":
                 tx_bits = np.transpose(cbits[:,batch*batch_size:(batch+1)*batch_size])
                 rx_bits_llr = np.transpose(rscbits[0][snr_idx][:, batch*batch_size:(batch+1)*batch_size])
                 
-                llr = torch.tensor(rx_bits_llr, dtype=torch.double)
-                y = torch.tensor(tx_bits, dtype=torch.double)
+                llr = torch.tensor(rx_bits_llr, dtype=torch.float)
+                y = torch.tensor(tx_bits, dtype=torch.float)
                     
                 #training accuracy
-                x = torch.zeros(llr.shape[0], mask_cv.shape[0], dtype=torch.double, requires_grad=True)
+                x = torch.zeros(llr.shape[0], mask_cv.shape[0], dtype=torch.float , requires_grad=True)
             
                 #send tensors to device
                 x.to(device)
@@ -97,7 +97,7 @@ if __name__ == "__main__":
                 with torch.no_grad():
                     y_est = model(x, llr, clamp_value)
                     
-                    ber_nn[bp_idx][snr_idx] += ber_sum(y_est.cpu()[:, 0:32], y[:, 0:32])
+                    ber_nn[bp_idx][snr_idx] += ber_sum(y_est.cpu()[:, 0:32], y[:, 0:32] )
                     
                     #ber_matlab[bp_idx][snr_idx] += ber_sum(np.transpose(rbits_final[bp_idx][snr_idx][:, batch*batch_size:(batch+1)*batch_size]), y)
                     
