@@ -1,5 +1,6 @@
 import numpy as np
 import datetime as datetime
+import collections
 
 import torch
 import torch.nn as nn
@@ -165,7 +166,19 @@ def train_joint(input_samples, output_samples, H, bp_iterations, clamp_value, da
         
         checkpoint = torch.load(model_path, map_location=device)
         
-        model.load_state_dict(checkpoint['model_state_dict'], strict=False)
+        num_items = len(checkpoint['model_state_dict'])
+        
+        d = collections.OrderedDict()
+        
+        for idx in range(0, num_items):
+            (old_key, value) = checkpoint['model_state_dict'].popitem(last=False)
+            key_split = old_key.split('.')
+            key_split.insert(1, 'LLRest')
+            deref = '.'
+            new_key = deref.join(key_split)
+            d[new_key] = value
+    
+        model.load_state_dict(d, strict=False)
 
     #--- TRAINING ---#
     
@@ -179,7 +192,7 @@ def train_joint(input_samples, output_samples, H, bp_iterations, clamp_value, da
         output_samples = output_samples[p]
         
         for batch in range(0, num_batches):
-            print('batch: {}'.format(batch))
+            #print('batch: {}'.format(batch))
             
             start_idx = batch*batch_size
             end_idx = (batch+1)*batch_size
@@ -217,7 +230,7 @@ def train_joint(input_samples, output_samples, H, bp_iterations, clamp_value, da
                 
                 x_temp = torch.zeros(x_test.shape[0], mask_cv.shape[0], dtype=torch.float, device=device)
                 
-                y_est_test = LLRest(x_test)
+                y_est_test = mdoel(x_test, x_temp, clamp_value)
                 test_loss = criterion(y_est_test, y_test)
                 
             y_est_bits = np.round(y_est_test.cpu().detach().numpy())
