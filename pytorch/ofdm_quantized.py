@@ -9,12 +9,12 @@ from ofdm_functions import gen_data, gen_qdata
 #--- VARIABLES ---#
 
 ofdm_size = 32
-num_epochs = 10
+num_epochs = 2000
 batch_size = np.power(2, 14) #CHANGE THIS
 lr = .01
 
-qbits = np.array([3])
-clipdb = np.array([5])
+qbits = np.array([1, 3, 5])
+clipdb = np.array([0, 5])
 
 filenames = []
 
@@ -53,6 +53,8 @@ for snrdb_idx, snrdb_val in enumerate(snrdb):
     
     for qbits_idx, qbits_val in enumerate(qbits):
         for clipdb_idx, clipdb_val in enumerate(clipdb):
+            
+            print('Training SNR: {}, Q-Bits: {}, Clip: {} dB'.format(srndb_val, qbits_val, clipdb_val))
     
             clip_ratio = np.power(10, (clipdb_val/10))
             
