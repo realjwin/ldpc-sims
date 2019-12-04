@@ -137,6 +137,8 @@ def train_joint(input_samples, output_samples, H, bp_iterations, clamp_value, da
     snr = np.power(10, snrdb / 10)
     num_samples = input_samples.shape[0]
     num_batches = num_samples // batch_size
+    minibatch_size = 2**9
+    num_minibatches = batch_size // minibatch_size
 
     #--- INIT NN ---#
     
@@ -192,32 +194,33 @@ def train_joint(input_samples, output_samples, H, bp_iterations, clamp_value, da
         output_samples = output_samples[p]
         
         for batch in range(0, num_batches):
-            #print('batch: {}'.format(batch))
+            for minibatch in range(0, num_minibatches):
+                #print('batch: {}'.format(batch))
+                
+                start_idx = batch*batch_size+minibatch*minibatch_size
+                end_idx = batch*batch_size+(minibatch+1)*minibatch_size
+                
+                x_batch = torch.tensor(input_samples[start_idx:end_idx], dtype=torch.float, requires_grad=True, device=device)
+                y_batch = torch.tensor(output_samples[start_idx:end_idx], dtype=torch.float, device=device)
+                
+                x_temp = torch.zeros(x_batch.shape[0], mask_cv.shape[0], dtype=torch.float, device=device)
+                
+                y_est_train = model(x_batch, x_temp, clamp_value)
+    
+                loss = criterion(y_est_train, y_batch)
+                loss.backward()
+                
+                train_loss[epoch] += loss.item()
             
-            start_idx = batch*batch_size
-            end_idx = (batch+1)*batch_size
-            
-            x_batch = torch.tensor(input_samples[start_idx:end_idx], dtype=torch.float, requires_grad=True, device=device)
-            y_batch = torch.tensor(output_samples[start_idx:end_idx], dtype=torch.float, device=device)
-            
-            x_temp = torch.zeros(x_batch.shape[0], mask_cv.shape[0], dtype=torch.float, device=device)
-            
-            y_est_train = model(x_batch, x_temp, clamp_value)
-
-            loss = criterion(y_est_train, y_batch)
-            loss.backward()
-            
-            train_loss[epoch] += loss.item()
-            
+                del x_batch
+                del y_batch
+                del x_temp
+                del y_est_train
+                del loss
+                
             #--- OPTIMIZER STEP ---#
             optimizer.step()
             optimizer.zero_grad()
-            
-            del x_batch
-            del y_batch
-            del x_temp
-            del y_est_train
-            del loss
         
         #--- TEST ---#
         
@@ -230,7 +233,7 @@ def train_joint(input_samples, output_samples, H, bp_iterations, clamp_value, da
                 
                 x_temp = torch.zeros(x_test.shape[0], mask_cv.shape[0], dtype=torch.float, device=device)
                 
-                y_est_test = mdoel(x_test, x_temp, clamp_value)
+                y_est_test = model(x_test, x_temp, clamp_value)
                 test_loss = criterion(y_est_test, y_test)
                 
             y_est_bits = np.round(y_est_test.cpu().detach().numpy())
@@ -258,7 +261,7 @@ def train_joint(input_samples, output_samples, H, bp_iterations, clamp_value, da
             'epoch': epoch,
             'data_timestamp': data_timestamp,
             'batch_size': batch_size,
-            'model_state_dict': Joint.state_dict(),
+            'model_state_dict': model.state_dict(),
             'optimizer_state_dict': optimizer.state_dict(),
             'loss': train_loss,
             }, filepath)
