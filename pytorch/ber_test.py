@@ -64,7 +64,7 @@ for snrdb_idx, snrdb_val in enumerate(snrdb):
     #--- GENERATE DATA ---#
     
     rx_signal, rx_symbols, rx_llrs = gen_data(tx_symbols, snrdb_val, ofdm_size)
-        
+
     input_samples = np.concatenate((rx_signal.real.T, rx_signal.imag.T), axis=1)
     input_samples = input_samples.reshape(-1, 2*ofdm_size)
     
@@ -95,6 +95,6 @@ for snrdb_idx, snrdb_val in enumerate(snrdb):
     rx_bits = (np.sign(output_samples) + 1 ) // 2
     
     uncoded_ber[snrdb_idx] = np.mean(np.abs(enc_bits - rx_bits))
-    coded_ber[snrdb_idx] = np.mean(np.abs(enc_bits - output_bits))
+    coded_ber[snrdb_idx] = np.mean(np.abs(enc_bits[:, 0:32] - output_bits[:, 0:32]))
 
     coded_bler[snrdb_idx] = np.mean(np.sign(np.sum(np.abs(enc_bits - output_bits), axis=1)))

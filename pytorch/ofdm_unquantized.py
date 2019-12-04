@@ -1,5 +1,6 @@
 import pickle
 import numpy as np
+import datetime as datetime
 
 from ofdm_nn import train_nn
 from ofdm_functions import gen_data
@@ -8,7 +9,7 @@ from ofdm_functions import gen_data
 #--- VARIABLES ---#
 
 ofdm_size = 32
-num_epochs = 1000
+num_epochs = 10
 batch_size = np.power(2, 12) #CHANGE THIS
 lr = .01
 
@@ -33,6 +34,7 @@ with open(tx_filepath, 'rb') as f:
 
 for snrdb_idx, snrdb_val in enumerate(snrdb):
     qbit = 0
+    clipdb = 0
     
     #--- GENERATE DATA ---#
     
@@ -45,6 +47,22 @@ for snrdb_idx, snrdb_val in enumerate(snrdb):
     
     #--- TRAIN NETWORK ---#
     
-    filename = train_nn(input_samples, output_samples, timestamp, snrdb_val, lr, qbit, ofdm_size, num_epochs, batch_size)
+    filename = train_nn(input_samples, output_samples, timestamp, snrdb_val, lr, qbit, clipdb, ofdm_size, num_epochs, batch_size)
     
     filenames.append(filename)
+
+#--- SAVE LIST OF FILENAMES ---#
+
+ts = datetime.datetime.now()
+
+modelfile = ts.strftime('%Y%m%d-%H%M%S') + '_tx=' + timestamp + '.pkl'
+modelpath = 'results/' + modelfile
+
+with open(modelpath, 'wb') as f:
+    save_dict = {
+            'filenames': filenames,
+            'snrdb': snrdb}
+    
+    pickle.dump(save_dict, f)
+    
+print(modelpath)

@@ -8,7 +8,7 @@ import torch.optim as optim
 from llr import LLRestimator
 from ofdm_functions import *
 
-def train_nn(input_samples, output_samples, data_timestamp, snrdb, learning_rate, qbits, ofdm_size, num_epochs, batch_size, load_model=None):
+def train_nn(input_samples, output_samples, data_timestamp, snrdb, learning_rate, qbits, clipdb, ofdm_size, num_epochs, batch_size, load_model=None):
     #--- VARIABLES ---#
     
     snr = np.power(10, snrdb / 10)
@@ -31,6 +31,15 @@ def train_nn(input_samples, output_samples, data_timestamp, snrdb, learning_rate
 
     optimizer = optim.SGD(LLRest.parameters(), lr=learning_rate)
     #optimizer = optim.Adam(LLRest.parameters(), lr=learning_rate, amsgrad=True)
+
+    #--- LOAD MODEL ---#
+    
+    if load_model:
+        model_path = 'model/' + load_model
+        
+        checkpoint = torch.load(model_path, map_location=device)
+        
+        LLRest.load_state_dict(checkpoint['model_state_dict'])
 
     #--- TRAINING ---#
     
@@ -73,7 +82,7 @@ def train_nn(input_samples, output_samples, data_timestamp, snrdb, learning_rate
         
         if np.mod(epoch, 100) == 0:
             with torch.no_grad():
-                random_sample = np.random.choice(num_samples, np.power(2, 14))
+                random_sample = np.random.choice(num_samples, np.power(2, 10))
                 
                 x_test = torch.tensor(input_samples[random_sample], dtype=torch.float, device=device)
                 y_test = torch.tensor(output_samples[random_sample], dtype=torch.float, device=device)
@@ -90,7 +99,7 @@ def train_nn(input_samples, output_samples, data_timestamp, snrdb, learning_rate
             
             print('flipped mean: {}, median: {}, max: {}'.format(np.mean(flipped_values), np.median(flipped_values), np.amax(flipped_values)))
     
-            print('[epoch %d] train_loss: %.3f, test_loss: %.3f, flipped_ber: %.3f' % (epoch + 1, train_loss / num_batches, test_loss, num_flipped))
+            print('[epoch %d] train_loss: %.3f, test_loss: %.3f, flipped_ber: %.3f' % (epoch + 1, train_loss[epoch] / num_batches, test_loss, num_flipped))
             
             del x_test
             del y_test
@@ -102,7 +111,7 @@ def train_nn(input_samples, output_samples, data_timestamp, snrdb, learning_rate
     
     ts = datetime.datetime.now()
         
-    filename = ts.strftime('%Y%m%d-%H%M%S') + '_qbits={}_snr={}_lr={}.pth'.format(qbits, snrdb, learning_rate)
+    filename = ts.strftime('%Y%m%d-%H%M%S') + '_qbits={}_clipdb={}_snr={}_lr={}.pth'.format(qbits, clipdb, snrdb, learning_rate)
     filepath = 'model/' + filename
     
     torch.save({
