@@ -39,11 +39,11 @@ class BeliefPropagation(nn.Module):
         
         #BP algorithm
         for layer in self.layers:
-            x = layer([x, llr]).clamp(-clamp_value, clamp_value)
+            x = layer([x, -llr]).clamp(-clamp_value, clamp_value)
 
         #output layer
         #flip sigmoid around since LLR is 0 is positive (or change bp_cv - maybe)
-        return -1*self.final_layer([x, llr])+1
+        return -1*self.final_layer([x, -llr])+1
         
         #double this since 1/2 is built in to VC layer (see eq 4 & 6)
         #but honestly the 2x makes no real difference if we're doing a hard

@@ -73,31 +73,6 @@ def demodulate_signal(symbols, ofdm_size, snr_est):
     
     return llrs.reshape((1,-1)), received_symbols.T.reshape((1,-1)) #this is not properly SNR scaled
 
-def decode_llr(llr, parity_matrix, bp_iterations):
-    #setup BP network
-    mask_vc, mask_cv, mask_v_final, llr_expander = genMasks(parity_matrix)
-
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-    if torch.cuda.device_count() > 1:
-        print("Let's use", torch.cuda.device_count(), "GPUs!")
-        model = nn.DataParallel(BeliefPropagation(mask_vc, mask_cv, mask_v_final, llr_expander, bp_iterations))
-    else:
-        model = BeliefPropagation(mask_vc, mask_cv, mask_v_final, llr_expander, bp_iterations)
-        
-    #send model to GPU
-    model.to(device)
-    
-#finish this LATER if we need it
-#    llr_train = torch.tensor(rx_bits_llr_train, dtype=torch.double, requires_grad=True, device=device)
-#    y_train = torch.tensor(tx_bits_train, dtype=torch.double, device=device)
-#                    
-#    x_train = torch.zeros(llr_train.shape[0], mask_cv.shape[0], dtype=torch.double, requires_grad=True, device=device)
-#
-#    #--- MODEL ---#
-#    y_est_train = model_train(x_train, llr_train, clamp_value)
-
-
 def weighted_mse(llr_est, llr, epsilon):
     return torch.mean((llr_est - llr)**2 / (torch.abs(llr) + epsilon))
     
