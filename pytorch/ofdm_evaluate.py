@@ -12,11 +12,12 @@ from llr import LLRestimator
 
 #--- VARIABLES ---#
 
-num_samples = np.power(2,10) #CHANGE THIS VALUE!
+num_samples = np.power(2,20) #CHANGE THIS VALUE!
 ofdm_size = 32
 
 bp_iterations = 5
-batch_size = num_samples
+batch_size = 2**10
+num_batches = num_samples // batch_size
 clamp_value = 20
 
 results = '20191203-191640_tx=20191203-162534'
@@ -71,6 +72,8 @@ wmse = np.zeros(snrdb.shape)
 
 for snrdb_idx, snrdb_val in enumerate(snrdb):
     
+    print(snrdb_val)
+    
     #--- LOAD WEIGHTS ---#
     
     filepath = 'model/' + filenames[snrdb_idx]
@@ -89,12 +92,16 @@ for snrdb_idx, snrdb_val in enumerate(snrdb):
 
     #--- INFERENCE ---#
     
-    x_input = torch.tensor(input_samples, dtype=torch.float, device=device)
+    llr_est = np.zeros(input_samples.shape)
     
-    with torch.no_grad():
-        llr_est = LLRest(x_input)
+    for batch in range(0, num_batches):
+        start_idx = batch*batch_size
+        end_idx =  (batch+1)*batch_size
         
-    llr_est = llr_est.cpu().detach().numpy()
+        x_input = torch.tensor(input_samples[start_idx:end_idx], dtype=torch.float, device=device)
+        
+        with torch.no_grad():
+            llr_est[start_idx:end_idx, :] = LLRest(x_input).cpu().detach().numpy()
     
     #--- LLR WMSE PERFORMANCE ---#
     
