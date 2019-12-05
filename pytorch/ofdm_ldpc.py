@@ -10,17 +10,32 @@ from ofdm_functions import gen_data, gen_qdata
 #--- VARIABLES ---#
 
 ofdm_size = 32
-num_epochs = 500
-batch_size = np.power(2, 8) #CHANGE THIS
-lr = .05
+num_epochs = 200
+batch_size = np.power(2, 14) #CHANGE THIS
+lr = 1
 
 bp_iterations = 3
 clamp_value = 20
 
 qbits = np.array([3])
-clipdb = np.array([5])
+clipdb = np.array([0])
 
 filenames = []
+
+#--- GEN TEST DATA ---#
+num_test_samples = 2**10
+
+num_bits = 2 * num_test_samples * ofdm_size
+
+bits = create_bits(num_bits//2)
+
+enc_bits = encode_bits(bits, G)
+
+tx_symbols_test = modulate_bits(enc_bits)
+
+enc_bits_test = enc_bits
+
+test_output = enc_bits_test.reshape(-1, 2*ofdm_size)
 
 #--- LOAD PRETRAINED NETWORK ---#
     
@@ -45,7 +60,8 @@ with open(tx_filepath, 'rb') as f:
     data = pickle.load(f)
 
     enc_bits = data['enc_bits']
-    tx_symbols = data['tx_symbols']    
+    tx_symbols = data['tx_symbols']
+
 
 #--- TRAIN QUANTIZED ---#
 
@@ -62,6 +78,12 @@ for snrdb_idx, snrdb_val in enumerate(snrdb):
             clip_ratio = np.power(10, (clipdb_val/10))
             
             #--- GENERATE QUNATIZED DATA ---#
+            
+            rx_signal_test, rx_symbols_test, rx_llrs_test = gen_data(tx_symbols_test, snrdb_val, ofdm_size)
+            qrx_signal_test, qrx_symbols_test, qrx_llrs_test = gen_qdata(rx_signal_test, snrdb_val, qbits_val, clip_ratio, ofdm_size)
+            
+            test_input = np.concatenate((qrx_signal_test.real.T, qrx_signal_test.imag.T), axis=1)
+            test_input = test_input.reshape(-1, 2*ofdm_size)
         
             qrx_signal, qrx_symbols, qrx_llrs = gen_qdata(rx_signal, snrdb_val, qbits_val, clip_ratio, ofdm_size)
                 
@@ -72,7 +94,7 @@ for snrdb_idx, snrdb_val in enumerate(snrdb):
             
             #--- TRAIN NETWORK ---#
             
-            filename = train_joint(input_samples, output_samples, H, clamp_value, bp_iterations, timestamp, snrdb_val, lr, qbits_val, clipdb_val, ofdm_size, num_epochs, batch_size, load_model=pretrained)
+            filename = train_joint(input_samples, output_samples, test_input, test_output, H, bp_iterations, clamp_value, timestamp, snrdb_val, lr, qbits_val, clipdb_val, ofdm_size, num_epochs, batch_size, load_model=pretrained)
             
             filenames.append(filename)
 
