@@ -137,7 +137,7 @@ def train_joint(input_samples, output_samples, test_input, test_output, H, bp_it
     snr = np.power(10, snrdb / 10)
     num_samples = input_samples.shape[0]
     num_batches = num_samples // batch_size
-    minibatch_size = 2**12
+    minibatch_size = 2**9
     num_minibatches = batch_size // minibatch_size
 
     #--- INIT NN ---#
@@ -227,27 +227,27 @@ def train_joint(input_samples, output_samples, test_input, test_output, H, bp_it
         if np.mod(epoch, 1) == 0:
             with torch.no_grad():
                 
-#                x_test = torch.tensor(test_input, dtype=torch.float, device=device)
-#                y_test = torch.tensor(test_output, dtype=torch.float, device=device)
-#                
-#                x_temp = torch.zeros(x_test.shape[0], mask_cv.shape[0], dtype=torch.float, device=device)
-#                
-#                y_est_test = model(x_test, x_temp, clamp_value)
-#                test_loss = criterion(y_est_test, y_test)
-#                
-#            y_est_bits = np.round(y_est_test.cpu().detach().numpy())
-#            y_bits = np.round(test_output)
+                x_test = torch.tensor(test_input, dtype=torch.float, device=device)
+                y_test = torch.tensor(test_output, dtype=torch.float, device=device)
                 
-                random_sample = np.random.choice(num_samples, np.power(2, 8))
-                
-                x_test = torch.tensor(input_samples[random_sample], dtype=torch.float, device=device)
-                y_test = torch.tensor(output_samples[random_sample], dtype=torch.float, device=device)
                 x_temp = torch.zeros(x_test.shape[0], mask_cv.shape[0], dtype=torch.float, device=device)
+                
                 y_est_test = model(x_test, x_temp, clamp_value)
                 test_loss = criterion(y_est_test, y_test)
                 
             y_est_bits = np.round(y_est_test.cpu().detach().numpy())
-            y_bits = np.round(output_samples[random_sample])
+            y_bits = np.round(test_output)
+                
+#                random_sample = np.random.choice(num_samples, np.power(2, 8))
+                
+#                x_test = torch.tensor(input_samples[random_sample], dtype=torch.float, device=device)
+#                y_test = torch.tensor(output_samples[random_sample], dtype=torch.float, device=device)
+#                x_temp = torch.zeros(x_test.shape[0], mask_cv.shape[0], dtype=torch.float, device=device)
+#                y_est_test = model(x_test, x_temp, clamp_value)
+#                test_loss = criterion(y_est_test, y_test)
+                
+#            y_est_bits = np.round(y_est_test.cpu().detach().numpy())
+#            y_bits = np.round(output_samples[random_sample])
             
             ber = np.mean(np.abs(y_est_bits - y_bits))
     
