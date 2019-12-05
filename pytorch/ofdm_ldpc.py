@@ -11,7 +11,7 @@ from ofdm_functions import gen_data, gen_qdata
 
 ofdm_size = 32
 num_epochs = 200
-batch_size = np.power(2, 12) #CHANGE THIS
+batch_size = np.power(2, 14)
 lr = 1
 
 bp_iterations = 3
@@ -23,7 +23,7 @@ clipdb = np.array([0])
 filenames = []
 
 #--- GEN TEST DATA ---#
-num_test_samples = 2**10
+num_test_samples = 2**12
 
 num_test_bits = 2 * num_test_samples * ofdm_size
 
@@ -63,9 +63,6 @@ with open(tx_filepath, 'rb') as f:
 
 #--- TRAIN QUANTIZED ---#
 
-tx_symbols = tx_symbols.reshape(-1, ofdm_size)[0:2**16]
-tx_symbols = tx_symbols.flatten()
-
 for snrdb_idx, snrdb_val in enumerate(snrdb):
     if snrdb_val == 5:
         rx_signal, rx_symbols, rx_llrs = gen_data(tx_symbols, snrdb_val, ofdm_size)
@@ -85,8 +82,6 @@ for snrdb_idx, snrdb_val in enumerate(snrdb):
                 
                 test_input = np.concatenate((qrx_signal_test.real.T, qrx_signal_test.imag.T), axis=1)
                 test_input = test_input.reshape(-1, 2*ofdm_size)
-                #test_input = 0
-                #test_output = 0
 
                 qrx_signal, qrx_symbols, qrx_llrs = gen_qdata(rx_signal, snrdb_val, qbits_val, clip_ratio, ofdm_size)
                     
