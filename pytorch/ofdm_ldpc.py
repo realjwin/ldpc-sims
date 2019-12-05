@@ -65,38 +65,38 @@ with open(tx_filepath, 'rb') as f:
 
 #--- TRAIN QUANTIZED ---#
 
-for snrdb_idx, snrdb_val in enumerate(snrdb):  
-    rx_signal, rx_symbols, rx_llrs = gen_data(tx_symbols, snrdb_val, ofdm_size)
-    
-    pretrained = pretrained_filenames[snrdb_idx]
-    
-    for qbits_idx, qbits_val in enumerate(qbits):
-        for clipdb_idx, clipdb_val in enumerate(clipdb):
-            
-            print('Training SNR: {}, Q-Bits: {}, Clip: {} dB'.format(snrdb_val, qbits_val, clipdb_val))
-    
-            clip_ratio = np.power(10, (clipdb_val/10))
-            
-            #--- GENERATE QUNATIZED DATA ---#
-            
-            rx_signal_test, rx_symbols_test, rx_llrs_test = gen_data(tx_symbols_test, snrdb_val, ofdm_size)
-            qrx_signal_test, qrx_symbols_test, qrx_llrs_test = gen_qdata(rx_signal_test, snrdb_val, qbits_val, clip_ratio, ofdm_size)
-            
-            test_input = np.concatenate((qrx_signal_test.real.T, qrx_signal_test.imag.T), axis=1)
-            test_input = test_input.reshape(-1, 2*ofdm_size)
+for snrdb_idx, snrdb_val in enumerate(snrdb):
+    if snrdb_val == 5:
+        rx_signal, rx_symbols, rx_llrs = gen_data(tx_symbols, snrdb_val, ofdm_size)
+        pretrained = pretrained_filenames[snrdb_idx]
         
-            qrx_signal, qrx_symbols, qrx_llrs = gen_qdata(rx_signal, snrdb_val, qbits_val, clip_ratio, ofdm_size)
+        for qbits_idx, qbits_val in enumerate(qbits):
+            for clipdb_idx, clipdb_val in enumerate(clipdb):
                 
-            input_samples = np.concatenate((qrx_signal.real.T, qrx_signal.imag.T), axis=1)
-            input_samples = input_samples.reshape(-1, 2*ofdm_size)
+                print('Training SNR: {}, Q-Bits: {}, Clip: {} dB'.format(snrdb_val, qbits_val, clipdb_val))
+        
+                clip_ratio = np.power(10, (clipdb_val/10))
+                
+                #--- GENERATE QUNATIZED DATA ---#
+                
+                rx_signal_test, rx_symbols_test, rx_llrs_test = gen_data(tx_symbols_test, snrdb_val, ofdm_size)
+                qrx_signal_test, qrx_symbols_test, qrx_llrs_test = gen_qdata(rx_signal_test, snrdb_val, qbits_val, clip_ratio, ofdm_size)
+                
+                test_input = np.concatenate((qrx_signal_test.real.T, qrx_signal_test.imag.T), axis=1)
+                test_input = test_input.reshape(-1, 2*ofdm_size)
             
-            output_samples = enc_bits.reshape(-1, 2*ofdm_size)
-            
-            #--- TRAIN NETWORK ---#
-            
-            filename = train_joint(input_samples, output_samples, test_input, test_output, H, bp_iterations, clamp_value, timestamp, snrdb_val, lr, qbits_val, clipdb_val, ofdm_size, num_epochs, batch_size, load_model=pretrained)
-            
-            filenames.append(filename)
+                qrx_signal, qrx_symbols, qrx_llrs = gen_qdata(rx_signal, snrdb_val, qbits_val, clip_ratio, ofdm_size)
+                    
+                input_samples = np.concatenate((qrx_signal.real.T, qrx_signal.imag.T), axis=1)
+                input_samples = input_samples.reshape(-1, 2*ofdm_size)
+                
+                output_samples = enc_bits.reshape(-1, 2*ofdm_size)
+                
+                #--- TRAIN NETWORK ---#
+                
+                filename = train_joint(input_samples, output_samples, test_input, test_output, H, bp_iterations, clamp_value, timestamp, snrdb_val, lr, qbits_val, clipdb_val, ofdm_size, num_epochs, batch_size, load_model=pretrained)
+                
+                filenames.append(filename)
 
 #--- SAVE LIST OF FILENAMES ---#
 
