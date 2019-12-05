@@ -158,8 +158,8 @@ def train_joint(input_samples, output_samples, test_input, test_output, H, bp_it
     model.to(device)
 
     criterion = nn.BCELoss()
-    optimizer = optim.SGD(model.parameters(), lr=learning_rate)
-    #optimizer = optim.Adam(LLRest.parameters(), lr=learning_rate, amsgrad=True)
+    #optimizer = optim.SGD(model.parameters(), lr=learning_rate)
+    optimizer = optim.Adam(model.parameters(), lr=learning_rate)#amsgrad=True)
 
     #--- LOAD MODEL ---#
     
@@ -207,7 +207,7 @@ def train_joint(input_samples, output_samples, test_input, test_output, H, bp_it
                 
                 y_est_train = model(x_batch, x_temp, clamp_value)
     
-                loss = criterion(y_est_train, y_batch)
+                loss = criterion(y_est_train, y_batch) / num_minibatches
                 loss.backward()
                 
                 train_loss[epoch] += loss.item()

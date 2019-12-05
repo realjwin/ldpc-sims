@@ -10,9 +10,9 @@ from ofdm_functions import gen_data, gen_qdata
 #--- VARIABLES ---#
 
 ofdm_size = 32
-num_epochs = 200
+num_epochs = 100
 batch_size = np.power(2, 14)
-lr = 1
+lr = .01
 
 bp_iterations = 3
 clamp_value = 20
