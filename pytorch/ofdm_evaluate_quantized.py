@@ -15,11 +15,15 @@ from llr import LLRestimator
 num_samples = np.power(2,10) #CHANGE THIS VALUE!
 ofdm_size = 32
 
-bp_iterations = 5
+bp_iterations = 3
 batch_size = num_samples
 clamp_value = 20
 
-results = '20191203-191640_tx=20191203-162534'
+#TODO: these should automatically be able to parse from results
+qbits_val = 3 
+clip_ratio = 1
+
+results = '20191203-191640_tx=20191203-162534_quantized'
 
 #--- LOAD RESULTS ---#
 
@@ -64,10 +68,17 @@ LLRest.to(device)
 uncoded_ber = np.zeros(snrdb.shape)
 coded_ber = np.zeros(snrdb.shape)
 coded_bler = np.zeros(snrdb.shape)
+
+uncoded_ber_quantized = np.zeros(snrdb.shape)
+coded_ber_quantized = np.zeros(snrdb.shape)
+coded_bler_quantized = np.zeros(snrdb.shape)
+
 uncoded_ber_nn = np.zeros(snrdb.shape)
 coded_ber_nn = np.zeros(snrdb.shape)
 coded_bler_nn = np.zeros(snrdb.shape)
-wmse = np.zeros(snrdb.shape)
+
+wmse_quantized = np.zeros(snrdb.shape)
+wmse_nn = np.zeros(snrdb.shape)
 
 for snrdb_idx, snrdb_val in enumerate(snrdb):
     
@@ -81,11 +92,15 @@ for snrdb_idx, snrdb_val in enumerate(snrdb):
     #--- GENERATE DATA ---#
     
     rx_signal, rx_symbols, rx_llrs = gen_data(tx_symbols, snrdb_val, ofdm_size)
-
-    input_samples = np.concatenate((rx_signal.real.T, rx_signal.imag.T), axis=1)
-    input_samples = input_samples.reshape(-1, 2*ofdm_size)
     
-    output_samples = rx_llrs.reshape(-1, 2*ofdm_size)
+    qrx_signal, qrx_symbols, qrx_llrs = gen_qdata(rx_signal, snrdb_val, qbits_val, clip_ratio, ofdm_size)
+
+    input_samples = np.concatenate((qrx_signal.real.T, qrx_signal.imag.T), axis=1)
+    input_samples = input_samples.reshape(-1, 2*ofdm_size)
+
+    qrx_llrs = qrx_llrs.reshape(-1, 2*ofdm_size)
+    rx_llrs = rx_llrs.reshape(-1, 2*ofdm_size)
+    enc_bits = enc_bits.reshape(-1, 2*ofdm_size)
 
     #--- INFERENCE ---#
     
@@ -98,19 +113,22 @@ for snrdb_idx, snrdb_val in enumerate(snrdb):
     
     #--- LLR WMSE PERFORMANCE ---#
     
-    wmse[snrdb_idx] = np.mean((llr_est - output_samples)**2 / (np.abs(output_samples) + 10e-4))
+    wmse_quantized[snrdb_idx] = np.mean((qrx_llrs - rx_llrs)**2 / (np.abs(rx_llrs) + 10e-4))
+    
+    wmse_nn[snrdb_idx] = np.mean((llr_est - rx_llrs)**2 / (np.abs(rx_llrs) + 10e-4))
     
     #compute number flipped? maybe later...
     
     #--- DECODING PERFORMANCE ---#
     
-    enc_bits = enc_bits.reshape(-1, 2*ofdm_size)
-    
-    cbits = (np.sign(output_samples) + 1) // 2
-    bits = decoder(output_samples, H, bp_iterations, batch_size, clamp_value)
+    cbits = (np.sign(rx_llrs) + 1) // 2
+    bits = decoder(rx_llrs, H, bp_iterations, batch_size, clamp_value)
     
     cbits_nn = (np.sign(llr_est) + 1) // 2
     bits_nn = decoder(llr_est, H, bp_iterations, batch_size, clamp_value)
+    
+    cbits_quantized = (np.sign(qrx_llrs) + 1) // 2
+    bits_quantized = decoder(qrx_llrs, H, bp_iterations, batch_size, clamp_value)
     
     uncoded_ber[snrdb_idx] = np.mean(np.abs(cbits - enc_bits))
     coded_ber[snrdb_idx] = np.mean(np.abs(bits[:, 0:32] - enc_bits[:, 0:32]))
@@ -120,6 +138,10 @@ for snrdb_idx, snrdb_val in enumerate(snrdb):
     coded_ber_nn[snrdb_idx] = np.mean(np.abs(bits_nn[:, 0:32] - enc_bits[:, 0:32]))
     coded_bler_nn[snrdb_idx] = np.mean(np.sign(np.sum(np.abs(bits_nn - enc_bits), axis=1)))
     
+    uncoded_ber_quantized[snrdb_idx] = np.mean(np.abs(cbits_quantized - enc_bits))
+    coded_ber_quantized[snrdb_idx] = np.mean(np.abs(bits_quantized[:, 0:32] - enc_bits[:, 0:32]))
+    coded_bler_quantized[snrdb_idx] = np.mean(np.sign(np.sum(np.abs(bits_quantized - enc_bits), axis=1)))
+
 #--- SAVE CODED INFORMATION ---#
     
 ber_path = 'ber_curves/' + results + '.pkl'
@@ -136,7 +158,12 @@ with open(ber_path, 'wb') as f:
             'coded_ber_nn': coded_ber_nn,
             'coded_bler_nn': coded_bler_nn,
             
-            'wmse': wmse,
+            'uncoded_ber_quantized': uncoded_ber_quantized,
+            'coded_ber_quantized': coded_ber_quantized,
+            'coded_bler_quantized': coded_bler_quantized,
+            
+            'wmse_nn': wmse_nn,
+            'wmse_quantized': wmse_quantized
             }
     
     pickle.dump(save_dict, f)
@@ -145,24 +172,26 @@ with open(ber_path, 'wb') as f:
 plot = False 
 if plot:
     fig, axes = plt.subplots(1, 2, figsize=(15,7))
-    fig.suptitle('NN Performance on Unquantized Inputs', fontsize=16, y=1.02)
+    fig.suptitle('NN Performance on Quantized Inputs', fontsize=16, y=1.02)
              
-    axes[0].semilogy(snrdb, uncoded_ber, '--*', label='Uncoded Traditional')
-    axes[0].semilogy(snrdb, coded_ber, '--*', label='Coded Traditional')
+    axes[0].semilogy(snrdb, uncoded_ber, label='Uncoded Traditional')
+    axes[0].semilogy(snrdb, coded_ber, label='Coded Traditional')
     axes[0].semilogy(snrdb, uncoded_ber_nn, '--+', label='Uncoded NN')
     axes[0].semilogy(snrdb, coded_ber_nn, '--+', label='Coded NN')
+    axes[0].semilogy(snrdb, uncoded_ber_quantized, '--*', label='Uncoded Quantized')
+    axes[0].semilogy(snrdb, coded_ber_quantized, '--*', label='Coded Quantized')
     axes[0].set_title('BER')
     axes[0].set_xlabel('SNR (dB)')
     axes[0].set_ylabel('BER')
     axes[0].legend()
     
-    axes[1].semilogy(snrdb, coded_bler, '--*', label='Traditional')
+    axes[1].semilogy(snrdb, coded_bler, label='Traditional')
     axes[1].semilogy(snrdb, coded_bler_nn, '--+', label='NN')
+    axes[1].semilogy(snrdb, coded_bler_quantized, '--*', label='Quantized')
     axes[1].set_title('BLER')
     axes[1].set_xlabel('SNR (dB)')
     axes[1].set_ylabel('BLER')
     axes[1].legend()
     
     plt.tight_layout()
-    plt.savefig('unquantized_nn.eps', format='eps', bbox_inches='tight')
-    #plt.show()
+    plt.savefig('quantized_nn.eps', format='eps', bbox_inches='tight')
