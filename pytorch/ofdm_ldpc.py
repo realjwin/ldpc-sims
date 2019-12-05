@@ -23,19 +23,17 @@ clipdb = np.array([0])
 filenames = []
 
 #--- GEN TEST DATA ---#
-num_test_samples = 2**10
-
-num_bits = 2 * num_test_samples * ofdm_size
-
-bits = create_bits(num_bits//2)
-
-enc_bits = encode_bits(bits, G)
-
-tx_symbols_test = modulate_bits(enc_bits)
-
-enc_bits_test = enc_bits
-
-test_output = enc_bits_test.reshape(-1, 2*ofdm_size)
+#num_test_samples = 2**10
+#
+#num_bits = 2 * num_test_samples * ofdm_size
+#
+#bits = create_bits(num_bits//2)
+#
+#enc_bits_test = encode_bits(bits, G)
+#
+#tx_symbols_test = modulate_bits(enc_bits_test)
+#
+#test_output = enc_bits_test.reshape(-1, 2*ofdm_size)
 
 #--- LOAD PRETRAINED NETWORK ---#
     
@@ -79,11 +77,11 @@ for snrdb_idx, snrdb_val in enumerate(snrdb):
                 
                 #--- GENERATE QUNATIZED DATA ---#
                 
-                rx_signal_test, rx_symbols_test, rx_llrs_test = gen_data(tx_symbols_test, snrdb_val, ofdm_size)
-                qrx_signal_test, qrx_symbols_test, qrx_llrs_test = gen_qdata(rx_signal_test, snrdb_val, qbits_val, clip_ratio, ofdm_size)
+                #rx_signal_test, rx_symbols_test, rx_llrs_test = gen_data(tx_symbols_test, snrdb_val, ofdm_size)
+                #qrx_signal_test, qrx_symbols_test, qrx_llrs_test = gen_qdata(rx_signal_test, snrdb_val, qbits_val, clip_ratio, ofdm_size)
                 
-                test_input = np.concatenate((qrx_signal_test.real.T, qrx_signal_test.imag.T), axis=1)
-                test_input = test_input.reshape(-1, 2*ofdm_size)
+                #test_input = np.concatenate((qrx_signal_test.real.T, qrx_signal_test.imag.T), axis=1)
+                #test_input = test_input.reshape(-1, 2*ofdm_size)
             
                 qrx_signal, qrx_symbols, qrx_llrs = gen_qdata(rx_signal, snrdb_val, qbits_val, clip_ratio, ofdm_size)
                     
@@ -91,6 +89,11 @@ for snrdb_idx, snrdb_val in enumerate(snrdb):
                 input_samples = input_samples.reshape(-1, 2*ofdm_size)
                 
                 output_samples = enc_bits.reshape(-1, 2*ofdm_size)
+                
+#                test_input = input_samples[0:2**9]
+#                test_output = output_samples[0:2**9]
+                test_input = 0
+                test_output = 0
                 
                 #--- TRAIN NETWORK ---#
                 

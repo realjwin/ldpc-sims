@@ -227,11 +227,22 @@ def train_joint(input_samples, output_samples, test_input, test_output, H, bp_it
         if np.mod(epoch, 1) == 0:
             with torch.no_grad():
                 
-                x_test = torch.tensor(test_input, dtype=torch.float, device=device)
-                y_test = torch.tensor(test_output, dtype=torch.float, device=device)
+#                x_test = torch.tensor(test_input, dtype=torch.float, device=device)
+#                y_test = torch.tensor(test_output, dtype=torch.float, device=device)
+#                
+#                x_temp = torch.zeros(x_test.shape[0], mask_cv.shape[0], dtype=torch.float, device=device)
+#                
+#                y_est_test = model(x_test, x_temp, clamp_value)
+#                test_loss = criterion(y_est_test, y_test)
+#                
+#            y_est_bits = np.round(y_est_test.cpu().detach().numpy())
+#            y_bits = np.round(test_output)
                 
+                random_sample = np.random.choice(num_samples, np.power(2, 8))
+                
+                x_test = torch.tensor(input_samples[random_sample], dtype=torch.float, device=device)
+                y_test = torch.tensor(output_samples[random_sample], dtype=torch.float, device=device)
                 x_temp = torch.zeros(x_test.shape[0], mask_cv.shape[0], dtype=torch.float, device=device)
-                
                 y_est_test = model(x_test, x_temp, clamp_value)
                 test_loss = criterion(y_est_test, y_test)
                 
