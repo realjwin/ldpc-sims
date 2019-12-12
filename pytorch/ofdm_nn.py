@@ -158,8 +158,11 @@ def train_joint(input_samples, output_samples, test_input, test_output, H, bp_it
     model.to(device)
 
     criterion = nn.BCELoss()
-    #optimizer = optim.SGD(model.parameters(), lr=learning_rate)
-    optimizer = optim.Adam(model.parameters(), lr=learning_rate)#amsgrad=True)
+    optimizer = optim.SGD([
+        {'params': model.module.LLRest.parameters(), 'lr': 5*learning_rate},
+        {'params': model.module.BP.parameters()}]
+        , lr=learning_rate)
+    #optimizer = optim.Adam(model.parameters(), lr=learning_rate)#amsgrad=True)
 
     #--- LOAD MODEL ---#
     
