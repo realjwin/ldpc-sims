@@ -6,11 +6,10 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 
-from llr import LLRestimator
-from ofdm_functions import *
-from masking import genMasks
-from bp import *
-import joint as j
+from nn.llr import LLRestimator
+from ofdm.ofdm_functions import *
+from bp.bp import BeliefPropagation
+import nn.joint as j
 
 def train_nn(input_samples, output_samples, data_timestamp, snrdb, learning_rate, qbits, clipdb, ofdm_size, num_epochs, batch_size, load_model=None):
     #--- VARIABLES ---#

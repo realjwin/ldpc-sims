@@ -5,18 +5,18 @@ import matplotlib.pyplot as plt
 import torch
 import torch.nn as nn
 
-from parity import *
+from bp.parity import H, G
 from decoder import decoder
 from ofdm_functions import *
-from llr import LLRestimator
+from llr.llr import LLRestimator
 
 #--- VARIABLES ---#
 
-num_samples = np.power(2,20) #CHANGE THIS VALUE!
+num_samples = np.power(2,18) #CHANGE THIS VALUE!
 ofdm_size = 32
 
 bp_iterations = 3
-batch_size = num_samples
+batch_size = 2**10
 num_batches = num_samples // batch_size
 clamp_value = 20
 

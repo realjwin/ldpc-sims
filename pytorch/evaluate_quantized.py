@@ -5,14 +5,13 @@ import matplotlib.pyplot as plt
 import torch
 import torch.nn as nn
 
-from parity import *
-from decoder import decoder
+from bp.parity import H, G
 from ofdm_functions import *
-from llr import LLRestimator
+from nn.llr import LLRestimator
 
 #--- VARIABLES ---#
 
-num_samples = np.power(2,20) #CHANGE THIS VALUE!
+num_samples = np.power(2,16) #CHANGE THIS VALUE!
 ofdm_size = 32
 
 bp_iterations = 3
@@ -94,7 +93,7 @@ for snrdb_idx, snrdb_val in enumerate(snrdb):
     
     #--- GENERATE DATA ---#
     
-    rx_signal, rx_symbols, rx_llrs = gen_data(tx_symbols, snrdb_val, ofdm_size)
+    rx_signal, rx_symbols, rx_llrs, tx_signalf = gen_data(tx_symbols, snrdb_val, ofdm_size)
     
     qrx_signal, qrx_symbols, qrx_llrs = gen_qdata(rx_signal, snrdb_val, qbits_val, clip_ratio, ofdm_size)
 
@@ -129,13 +128,13 @@ for snrdb_idx, snrdb_val in enumerate(snrdb):
     #--- DECODING PERFORMANCE ---#
     
     cbits = (np.sign(rx_llrs) + 1) // 2
-    bits = decoder(rx_llrs, H, bp_iterations, batch_size, clamp_value)
+    bits = decode_bits(rx_llrs, H, bp_iterations, batch_size, clamp_value)
     
     cbits_nn = (np.sign(llr_est) + 1) // 2
-    bits_nn = decoder(llr_est, H, bp_iterations, batch_size, clamp_value)
+    bits_nn = decode_bits(llr_est, H, bp_iterations, batch_size, clamp_value)
     
     cbits_quantized = (np.sign(qrx_llrs) + 1) // 2
-    bits_quantized = decoder(qrx_llrs, H, bp_iterations, batch_size, clamp_value)
+    bits_quantized = decode_bits(qrx_llrs, H, bp_iterations, batch_size, clamp_value)
     
     uncoded_ber[snrdb_idx] = np.mean(np.abs(cbits - enc_bits))
     coded_ber[snrdb_idx] = np.mean(np.abs(bits[:, 0:32] - enc_bits[:, 0:32]))
@@ -151,7 +150,7 @@ for snrdb_idx, snrdb_val in enumerate(snrdb):
 
 #--- SAVE CODED INFORMATION ---#
     
-ber_path = 'ber_curves/' + results + '.pkl'
+ber_path = 'outputs/ber/' + results + '.pkl'
 
 with open(ber_path, 'wb') as f:
     save_dict = {

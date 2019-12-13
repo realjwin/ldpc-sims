@@ -9,15 +9,20 @@ Created on Tue Sep 24 11:48:40 2019
 import copy
 import numpy as np
 import torch.nn as nn
-from bp_cv import BeliefPropagationCV
-from bp_vc import BeliefPropagationVC
+from .masking import generate_masks
+from .bp_cv import BeliefPropagationCV
+from .bp_vc import BeliefPropagationVC
 
 def pyd(tensor):
     return tensor.detach().numpy()
 
 class BeliefPropagation(nn.Module):
-    def __init__(self, mask_c, mask_v, mask_v_final, llr_expander, iterations):
+    def __init__(self, H, iterations):
         super(BeliefPropagation, self).__init__()
+        
+        mask_c, mask_v, mask_v_final, llr_expander = generate_masks(H)
+        
+        self.layer_size_val = llr_expander.shape[0]
         
         self.BeliefPropagationIter = nn.Sequential(
                 BeliefPropagationVC(mask_v, llr_expander),
@@ -34,7 +39,7 @@ class BeliefPropagation(nn.Module):
                 )
         
         #self.final_layer_test = BeliefPropagationVC(mask_v_final, np.eye(mask_v_final.shape[0]))
-        
+    
     def forward(self, x, llr, clamp_value):
         
         #BP algorithm
@@ -51,3 +56,7 @@ class BeliefPropagation(nn.Module):
         #I should really split up the "activation" layers outside of the VC, CV
         #that would be very valuable I think...
         #return 2*self.final_layer_test([x, llr])
+        #I should double check that this is right ^
+        
+    def layer_size(self):
+        return self.layer_size_val

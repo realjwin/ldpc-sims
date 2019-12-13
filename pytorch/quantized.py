@@ -2,19 +2,19 @@ import pickle
 import numpy as np
 import datetime as datetime
 
-from ofdm_nn import train_nn
-from ofdm_functions import gen_data, gen_qdata
+from ofdm.ofdm_nn import train_nn
+from ofdm.ofdm_functions import gen_data, gen_qdata
 
 
 #--- VARIABLES ---#
 
 ofdm_size = 32
-num_epochs = 2000
+num_epochs = 5000
 batch_size = np.power(2, 14) #CHANGE THIS
 lr = .1
 
-qbits = np.array([1, 3, 5])
-clipdb = np.array([0, 5])
+qbits = np.array([3])
+clipdb = np.array([10])
 
 filenames = []
 
@@ -22,7 +22,7 @@ filenames = []
     
 results = '20191203-191640_tx=20191203-162534'
 
-results_path = 'results/' + results + '.pkl'
+results_path = 'outputs/results/' + results + '.pkl'
 
 with open(results_path, 'rb') as f:
     data = pickle.load(f)
@@ -35,7 +35,7 @@ with open(results_path, 'rb') as f:
 timestamp = results.split('_')[1].split('=')[1]
 
 tx_file = timestamp + '_tx.pkl'
-tx_filepath = 'data/' + tx_file
+tx_filepath = 'outputs/tx/' + tx_file
 
 with open(tx_filepath, 'rb') as f:
     data = pickle.load(f)

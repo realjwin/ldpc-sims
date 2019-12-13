@@ -9,7 +9,7 @@ Created on Mon Apr 29 14:38:01 2019
 import numpy as np
 import scipy.io as sio
 
-def genMasks(H):
+def generate_masks(H):
     """
     the nodes for each layer of the trellis are defined by 
     c(m,n) & v(m,n) where m denotes which check (variable) node

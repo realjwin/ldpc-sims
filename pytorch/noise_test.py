@@ -7,29 +7,13 @@ import matplotlib.pyplot as plt
 from parity import *
 from ofdm_functions import *
 
-def gen_data(tx_symbols, snrdb, qbits, clip_ratio, ofdm_size):
-    snr = np.power(10, snrdb/10)
-    
-    rx_signal = transmit_symbols(tx_symbols, ofdm_size, snr)    
-        
-    rx_llrs, rx_symbols = demodulate_signal(rx_signal, ofdm_size, snr)
-    
-    sigma_rx = np.max(np.std(rx_signal))
-    
-    agc_clip = sigma_rx * clip_ratio
-    
-    qrx_signal = quantizer(rx_signal, qbits, agc_clip)
-    qrx_llrs, qrx_symbols = demodulate_signal(qrx_signal, ofdm_size, snr)  
-    
-    return rx_signal, rx_symbols, rx_llrs, qrx_signal, qrx_symbols, qrx_llrs
-
 #--- VARIABLES ---#
 
 ts = datetime.datetime.now()
 
 snrdb = np.array([-5, 0, 5])
 
-qbits = np.array([3, 6, 12])
+qbits = np.array([1, 3, 5])
 clipdb = np.array([0, 5, 10])
 clip_ratio = np.power(10, clipdb/10)
 
@@ -57,9 +41,10 @@ for qbit_idx, qbit_val in enumerate(qbits):
     
     for snrdb_idx, snrdb_val in enumerate(snrdb):
         for clip_idx, clip_val in enumerate(clip_ratio):
-            rx_signal, rx_symbols, rx_llrs, qrx_signal, qrx_symbols, qrx_llrs = gen_data(tx_symbols, snrdb_val, qbit_val, clip_val, ofdm_size)
+            rx_signal, rx_symbols, rx_llrs, tx_signal = gen_data(tx_symbols, snrdb_val, ofdm_size)
+            qrx_signal, qrx_symbols, qrx_llrs = gen_qdata(rx_signal, snrdb_val, qbit_val, clip_val, ofdm_size)
         
-            q_noise = qrx_signal - tx_symbols
+            q_noise = qrx_signal - tx_signal
             
             axes[snrdb_idx, clip_idx].hist(q_noise.real.flatten(), bins=100)
             #axes[snrdb_idx, clip_idx].set_yscale('log', nonposy='clip')
