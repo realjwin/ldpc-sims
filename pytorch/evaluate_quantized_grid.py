@@ -5,14 +5,14 @@ import matplotlib.pyplot as plt
 import torch
 import torch.nn as nn
 
-from parity import *
+from bp.parity import H, G
 from decoder import decoder
 from ofdm_functions import *
-from llr import LLRestimator
+from llr.llr import LLRestimator
 
 #--- VARIABLES ---#
 
-num_samples = np.power(2,20) #CHANGE THIS VALUE!
+num_samples = np.power(2,18) #CHANGE THIS VALUE!
 ofdm_size = 32
 
 bp_iterations = 3
@@ -21,10 +21,10 @@ num_batches = num_samples // batch_size
 clamp_value = 20
 
 #TODO: these should automatically be able to parse from results
-qbits_val = 3 
-clip_ratio = 1
+qbits = np.array([1, 3, 5])
+clipdb = np.array([0, 5])
 
-results = '20191203-191640_tx=20191203-162534_quantized'
+results = '20191203-191640_tx=20191203-162534_quantized_half'
 
 #--- LOAD RESULTS ---#
 
@@ -70,27 +70,39 @@ uncoded_ber = np.zeros(snrdb.shape)
 coded_ber = np.zeros(snrdb.shape)
 coded_bler = np.zeros(snrdb.shape)
 
-uncoded_ber_quantized = np.zeros(snrdb.shape)
-coded_ber_quantized = np.zeros(snrdb.shape)
-coded_bler_quantized = np.zeros(snrdb.shape)
+uncoded_ber_quantized = np.zeros((len(snrdb), len(qbits), len(clipdb)))
+coded_ber_quantized = np.zeros((len(snrdb), len(qbits), len(clipdb)))
+coded_bler_quantized = np.zeros((len(snrdb), len(qbits), len(clipdb)))
 
-uncoded_ber_nn = np.zeros(snrdb.shape)
-coded_ber_nn = np.zeros(snrdb.shape)
-coded_bler_nn = np.zeros(snrdb.shape)
+uncoded_ber_nn = np.zeros((len(snrdb), len(qbits), len(clipdb)))
+coded_ber_nn = np.zeros((len(snrdb), len(qbits), len(clipdb)))
+coded_bler_nn = np.zeros((len(snrdb), len(qbits), len(clipdb)))
 
-wmse_quantized = np.zeros(snrdb.shape)
-wmse_nn = np.zeros(snrdb.shape)
+wmse_quantized = np.zeros((len(snrdb), len(qbits), len(clipdb)))
+wmse_nn = np.zeros((len(snrdb), len(qbits), len(clipdb)))
 
-for snrdb_idx, snrdb_val in enumerate(snrdb):
+for filename in filenames:
     
-    print(snrdb_val)
+    print(filename)
     
     #--- LOAD WEIGHTS ---#
     
-    filepath = 'model/' + filenames[snrdb_idx]
+    filepath = 'model/' + filename
     checkpoint = torch.load(filepath, map_location=device)
     
     LLRest.load_state_dict(checkpoint['model_state_dict'])
+    
+    snrdb_val = np.float(filename.split('_')[3].split('=')[1])
+    qbits_val = np.float(filename.split('_')[1].split('=')[1])
+    clipdb_val = np.float(filename.split('_')[2].split('=')[1])
+    clip_ratio = np.power(10, clipdb_val / 10)
+    
+    snrdb_idx = np.argwhere(snrdb == snrdb_val)
+    qbits_idx = np.argwhere(qbits == qbits_val)
+    clipdb_idx = np.argwhere(clipdb == clipdb_val)
+    
+    print('SNR: {}, Q-Bits: {}, Clip: {}'.format(snrdb_idx, qbits_idx, clipdb_idx))
+    
     
     #--- GENERATE DATA ---#
     
@@ -117,12 +129,12 @@ for snrdb_idx, snrdb_val in enumerate(snrdb):
         
         with torch.no_grad():
             llr_est[start_idx:end_idx, :] = LLRest(x_input).cpu().detach().numpy()
-
+    
     #--- LLR WMSE PERFORMANCE ---#
     
-    wmse_quantized[snrdb_idx] = np.mean((qrx_llrs - rx_llrs)**2 / (np.abs(rx_llrs) + 10e-4))
+    wmse_quantized[snrdb_idx, qbits_idx, clipdb_idx] = np.mean((qrx_llrs - rx_llrs)**2 / (np.abs(rx_llrs) + 10e-4))
     
-    wmse_nn[snrdb_idx] = np.mean((llr_est - rx_llrs)**2 / (np.abs(rx_llrs) + 10e-4))
+    wmse_nn[snrdb_idx, qbits_idx, clipdb_idx] = np.mean((llr_est - rx_llrs)**2 / (np.abs(rx_llrs) + 10e-4))
     
     #compute number flipped? maybe later...
     
@@ -141,13 +153,13 @@ for snrdb_idx, snrdb_val in enumerate(snrdb):
     coded_ber[snrdb_idx] = np.mean(np.abs(bits[:, 0:32] - enc_bits[:, 0:32]))
     coded_bler[snrdb_idx] = np.mean(np.sign(np.sum(np.abs(bits - enc_bits), axis=1)))
     
-    uncoded_ber_nn[snrdb_idx] = np.mean(np.abs(cbits_nn - enc_bits))
-    coded_ber_nn[snrdb_idx] = np.mean(np.abs(bits_nn[:, 0:32] - enc_bits[:, 0:32]))
-    coded_bler_nn[snrdb_idx] = np.mean(np.sign(np.sum(np.abs(bits_nn - enc_bits), axis=1)))
+    uncoded_ber_nn[snrdb_idx, qbits_idx, clipdb_idx] = np.mean(np.abs(cbits_nn - enc_bits))
+    coded_ber_nn[snrdb_idx, qbits_idx, clipdb_idx] = np.mean(np.abs(bits_nn[:, 0:32] - enc_bits[:, 0:32]))
+    coded_bler_nn[snrdb_idx, qbits_idx, clipdb_idx] = np.mean(np.sign(np.sum(np.abs(bits_nn - enc_bits), axis=1)))
     
-    uncoded_ber_quantized[snrdb_idx] = np.mean(np.abs(cbits_quantized - enc_bits))
-    coded_ber_quantized[snrdb_idx] = np.mean(np.abs(bits_quantized[:, 0:32] - enc_bits[:, 0:32]))
-    coded_bler_quantized[snrdb_idx] = np.mean(np.sign(np.sum(np.abs(bits_quantized - enc_bits), axis=1)))
+    uncoded_ber_quantized[snrdb_idx, qbits_idx, clipdb_idx] = np.mean(np.abs(cbits_quantized - enc_bits))
+    coded_ber_quantized[snrdb_idx, qbits_idx, clipdb_idx] = np.mean(np.abs(bits_quantized[:, 0:32] - enc_bits[:, 0:32]))
+    coded_bler_quantized[snrdb_idx, qbits_idx, clipdb_idx] = np.mean(np.sign(np.sum(np.abs(bits_quantized - enc_bits), axis=1)))
 
 #--- SAVE CODED INFORMATION ---#
     
@@ -156,6 +168,8 @@ ber_path = 'ber_curves/' + results + '.pkl'
 with open(ber_path, 'wb') as f:
     save_dict = {
             'snrdb': snrdb,
+            'qbits': qbits,
+            'clipdb': clipdb,
             
             'uncoded_ber': uncoded_ber,
             'coded_ber': coded_ber,
@@ -175,26 +189,29 @@ with open(ber_path, 'wb') as f:
     
     pickle.dump(save_dict, f)
 
-
-plot = False 
+plot = True 
 if plot:
     fig, axes = plt.subplots(1, 2, figsize=(15,7))
     fig.suptitle('NN Performance on Quantized Inputs', fontsize=16, y=1.02)
-             
+    
     axes[0].semilogy(snrdb, uncoded_ber, label='Uncoded Traditional')
     axes[0].semilogy(snrdb, coded_ber, label='Coded Traditional')
-    axes[0].semilogy(snrdb, uncoded_ber_nn, '--+', label='Uncoded NN')
-    axes[0].semilogy(snrdb, coded_ber_nn, '--+', label='Coded NN')
-    axes[0].semilogy(snrdb, uncoded_ber_quantized, '--*', label='Uncoded Quantized')
-    axes[0].semilogy(snrdb, coded_ber_quantized, '--*', label='Coded Quantized')
+    for qbits_idx, qbits_val in enumerate(qbits):
+        for clipdb_idx, clipdb_val in enumerate(clipdb):
+            #axes[0].semilogy(snrdb, uncoded_ber_nn[:, qbits_idx, clipdb_idx], '--+', label='Uncoded NN, {}-bits, \u03BC={}dB'.format(qbits_val, clipdb_val))
+            #axes[0].semilogy(snrdb, coded_ber_nn[:, qbits_idx, clipdb_idx], '--+', label='Coded NN, {}-bits, \u03BC={}dB'.format(qbits_val, clipdb_val))
+            axes[0].semilogy(snrdb, uncoded_ber_quantized[:, qbits_idx, clipdb_idx], '--*', label='Uncoded Quantized, {}-bits, \u03BC={}dB'.format(qbits_val, clipdb_val))
+            #axes[0].semilogy(snrdb, coded_ber_quantized[:, qbits_idx, clipdb_idx], '--*', label='Coded Quantized, {}-bits, \u03BC={}dB'.format(qbits_val, clipdb_val))
     axes[0].set_title('BER')
     axes[0].set_xlabel('SNR (dB)')
     axes[0].set_ylabel('BER')
     axes[0].legend()
     
     axes[1].semilogy(snrdb, coded_bler, label='Traditional')
-    axes[1].semilogy(snrdb, coded_bler_nn, '--+', label='NN')
-    axes[1].semilogy(snrdb, coded_bler_quantized, '--*', label='Quantized')
+    for qbits_idx, qbits_val in enumerate(qbits):
+        for clipdb_idx, clipdb_val in enumerate(clipdb):
+            axes[1].semilogy(snrdb, coded_bler_nn[:, qbits_idx, clipdb_idx], '--+', label='NN, {}-bits, \u03BC={}dB'.format(qbits_val, clipdb_val))
+            axes[1].semilogy(snrdb, coded_bler_quantized[:, qbits_idx, clipdb_idx], '--*', label='Quantized, {}-bits, \u03BC={}dB'.format(qbits_val, clipdb_val))
     axes[1].set_title('BLER')
     axes[1].set_xlabel('SNR (dB)')
     axes[1].set_ylabel('BLER')

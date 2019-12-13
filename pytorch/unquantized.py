@@ -2,8 +2,8 @@ import pickle
 import numpy as np
 import datetime as datetime
 
-from ofdm_nn import train_nn
-from ofdm_functions import gen_data
+from ofdm.ofdm_nn import train_nn
+from ofdm.ofdm_functions import gen_data
 
 
 #--- VARIABLES ---#
@@ -55,7 +55,7 @@ for snrdb_idx, snrdb_val in enumerate(snrdb):
 
 ts = datetime.datetime.now()
 
-modelfile = ts.strftime('%Y%m%d-%H%M%S') + '_tx=' + timestamp + '.pkl'
+modelfile = ts.strftime('%Y%m%d-%H%M%S') + '_tx=' + timestamp + '_unquantized.pkl'
 modelpath = 'results/' + modelfile
 
 with open(modelpath, 'wb') as f:
