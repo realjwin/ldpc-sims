@@ -115,7 +115,7 @@ def train_nn(input_samples, output_samples, data_timestamp, snrdb, learning_rate
     ts = datetime.datetime.now()
         
     filename = ts.strftime('%Y%m%d-%H%M%S') + '_qbits={}_clipdb={}_snr={}_lr={}.pth'.format(qbits, clipdb, snrdb, learning_rate)
-    filepath = 'model/' + filename
+    filepath = 'outputs/model/' + filename
     
     torch.save({
             'epoch': epoch,
@@ -253,7 +253,7 @@ def train_joint(input_samples, output_samples, test_input, test_output, H, bp_it
     ts = datetime.datetime.now()
         
     filename = ts.strftime('%Y%m%d-%H%M%S') + '_qbits={}_clipdb={}_snr={}_lr={}_joint.pth'.format(qbits, clipdb, snrdb, learning_rate)
-    filepath = 'model/' + filename
+    filepath = 'outputs/model/' + filename
     
     torch.save({
             'epoch': epoch,

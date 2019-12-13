@@ -9,7 +9,7 @@ from ofdm.ofdm_functions import gen_data, gen_qdata
 #--- VARIABLES ---#
 
 ofdm_size = 32
-num_epochs = 5000
+num_epochs = 1
 batch_size = np.power(2, 14) #CHANGE THIS
 lr = .1
 
@@ -48,7 +48,7 @@ with open(tx_filepath, 'rb') as f:
 for snrdb_idx, snrdb_val in enumerate(snrdb):
     
     if np.mod(snrdb_val, 2) == 0:    
-        rx_signal, rx_symbols, rx_llrs = gen_data(tx_symbols, snrdb_val, ofdm_size)
+        rx_signal, rx_symbols, rx_llrs, tx_signal = gen_data(tx_symbols, snrdb_val, ofdm_size)
         
         pretrained = pretrained_filenames[snrdb_idx]
         
@@ -79,7 +79,7 @@ for snrdb_idx, snrdb_val in enumerate(snrdb):
 snrdb = np.linspace(0, 10, 6)
 
 modelfile = results + '_quantized.pkl'
-modelpath = 'results/' + modelfile
+modelpath = 'outputs/results/' + modelfile
 
 with open(modelpath, 'wb') as f:
     save_dict = {
