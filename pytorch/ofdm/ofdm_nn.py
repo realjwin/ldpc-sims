@@ -38,7 +38,7 @@ def train_nn(input_samples, output_samples, data_timestamp, snrdb, learning_rate
     #--- LOAD MODEL ---#
     
     if load_model:
-        model_path = 'model/' + load_model
+        model_path = 'outputs/model/' + load_model
         
         checkpoint = torch.load(model_path, map_location=device)
         
