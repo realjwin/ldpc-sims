@@ -28,7 +28,7 @@ def transmit_symbols(symbols, ofdm_size, snr):
     
     received_symbols = ofdm_symbols + noise
     
-    return received_symbols.T.reshape((1,-1))
+    return received_symbols.T.reshape((1,-1)), ofdm_symbols.T.reshape((1,-1))
 
 def quantizer(inputs, num_bits, clip_value):
     num_levels = np.power(2, num_bits)
@@ -108,11 +108,11 @@ def DFTreal(N):
 def gen_data(tx_symbols, snrdb, ofdm_size):
     snr = np.power(10, snrdb/10)
     
-    rx_signal = transmit_symbols(tx_symbols, ofdm_size, snr)    
+    rx_signal, tx_signal = transmit_symbols(tx_symbols, ofdm_size, snr)    
         
     rx_llrs, rx_symbols = demodulate_signal(rx_signal, ofdm_size, snr)
 
-    return rx_signal, rx_symbols, rx_llrs
+    return rx_signal, rx_symbols, rx_llrs, tx_signal
 
 def gen_qdata(rx_signal, snrdb, qbits, clip_ratio, ofdm_size):
     snr = np.power(10, snrdb/10)

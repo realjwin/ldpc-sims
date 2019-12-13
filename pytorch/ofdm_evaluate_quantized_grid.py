@@ -16,7 +16,7 @@ num_samples = np.power(2,20) #CHANGE THIS VALUE!
 ofdm_size = 32
 
 bp_iterations = 3
-batch_size = num_samples
+batch_size = 2**10
 num_batches = num_samples // batch_size
 clamp_value = 20
 

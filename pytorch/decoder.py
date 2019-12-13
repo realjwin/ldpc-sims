@@ -33,7 +33,7 @@ def decoder(llrs, H, bp_iterations, batch_size, clamp_value=10):
             start_idx = batch*batch_size
             end_idx =  (batch+1)*batch_size
                     
-            llr = torch.tensor(-llrs[start_idx:end_idx, :], dtype=torch.float, device=device)                            
+            llr = torch.tensor(llrs[start_idx:end_idx, :], dtype=torch.float, device=device)                            
             x = torch.zeros(llr.shape[0], mask_cv.shape[0], dtype=torch.float, device=device)
         
             y_est = bp_model(x, llr, clamp_value)

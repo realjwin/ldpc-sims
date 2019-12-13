@@ -25,30 +25,10 @@ with open(tx_filepath, 'rb') as f:
 
     snrdb = data['snrdb']
     qbits = data['qbits']
-
-#--- TRAIN NN ---#
-
-#for qbit_idx, qbit_val in enumerate(qbits):
-#    for snrdb_idx, snrdb_val in enumerate(snrdb):
-#        
-#        datapath = 'data/' + timestamp + '_snr={}_qbits={}.pkl'.format(snrdb_val, qbit_val)
-#        
-#        with open(datapath, 'rb') as f:
-#            data = pickle.load(f)
-#            
-#            rx_llrs = data['rx_llrs']
-#            qrx_signal = data['qrx_signal']
-#        
-#        for lr_idx, lr_val in enumerate(learning_rates):
-#            
-#            input_samples = np.concatenate((qrx_signal.real.T, qrx_signal.imag.T), axis=1)
-#            input_samples = input_samples.reshape(-1, 2*ofdm_size)
-#            
-#            output_samples = rx_llrs.reshape(-1, 2*ofdm_size)
-#            
-#            filename = train_nn(input_samples, output_samples, timestamp, snrdb_val, lr_val, qbit_val, ofdm_size, num_epochs, batch_size)
-#            
-#            filenames.append(filename)
+    
+snrdb = np.array([-5, 0, 5])
+clipdb = np.array([0, 5, 10])
+clip_ratio = np.power(10, clipdb/10)
         
 #--- TRAIN UNQUANTIZED ---#
 
