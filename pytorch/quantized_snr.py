@@ -8,12 +8,12 @@ from ofdm.ofdm_functions import *
 #--- VARIABLES ---#
 
 ofdm_size = 32
-num_epochs = 3000
+num_epochs = 6000
 batch_size = np.power(2, 14)
-lr = 1
+lr = .1
 
 qbits = np.array([3])
-clipdb = np.array([5])
+clipdb = np.array([0, 5, 10])
 
 filenames = []
 

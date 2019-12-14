@@ -204,7 +204,7 @@ def train_nn_withSNR(input_samples, output_samples, data_timestamp, snrdb_low, s
         
         #--- TEST ---#
         
-        if np.mod(epoch, 1) == 0:
+        if np.mod(epoch, 10) == 0:
             with torch.no_grad():
                 random_sample = np.random.choice(num_samples, np.power(2, 10))
                 
@@ -219,14 +219,14 @@ def train_nn_withSNR(input_samples, output_samples, data_timestamp, snrdb_low, s
             
             num_flipped = np.mean(np.abs(y_est_bits - y_bits))
             temp = output_samples[random_sample]
-            flipped_values= np.abs(temp[np.where(np.abs(y_est_bits - y_bits) == 2)])
+            flipped_values= np.abs(temp[np.where(np.abs(y_est_bits - y_bits) != 0)])
             
             if num_flipped == 0:
                 print('no test values are flipped')
             else:
                 print('flipped mean: {}, median: {}, max: {}'.format(np.mean(flipped_values), np.median(flipped_values), np.amax(flipped_values)))
     
-            print('[epoch %d] train_loss: %.3f, test_loss: %.3f, flipped_ber: %.3f' % (epoch + 1, train_loss[epoch] / num_batches, test_loss, num_flipped))
+            print('[epoch %d] train_loss: %.3f, test_loss: %.3f, flipped_ber: %.3f' % (epoch + 1, train_loss[epoch], test_loss, num_flipped))
             
             del x_test
             del y_test
