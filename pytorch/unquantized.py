@@ -55,7 +55,7 @@ for snrdb_idx, snrdb_val in enumerate(snrdb):
 
 ts = datetime.datetime.now()
 
-modelfile = ts.strftime('%Y%m%d-%H%M%S') + '_tx=' + timestamp + '_unquantized.pkl'
+modelfile = ts.strftime('%Y%m%d-%H%M%S') + '_tx=' + timestamp + '.pkl'
 modelpath = 'results/' + modelfile
 
 with open(modelpath, 'wb') as f:

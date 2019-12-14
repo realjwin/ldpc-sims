@@ -191,7 +191,7 @@ def train_nn_withSNR(input_samples, output_samples, data_timestamp, snrdb_low, s
             loss = weighted_mse(y_est_train, y_batch, 10e-4)
             loss.backward()
             
-            train_loss[epoch] += loss.item()
+            train_loss[epoch] += loss.item() / num_batches
             
             #--- OPTIMIZER STEP ---#
             optimizer.step()

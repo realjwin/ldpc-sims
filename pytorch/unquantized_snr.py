@@ -5,8 +5,6 @@ import datetime as datetime
 from ofdm.ofdm_nn import train_nn_withSNR
 from ofdm.ofdm_functions import *
 
-
-
 #--- VARIABLES ---#
 
 ofdm_size = 32
@@ -21,7 +19,7 @@ filenames = []
 
 #--- LOAD DATA ---#
 
-timestamp = '20191213-225833'
+timestamp = '20191213-234355'
 
 tx_file = timestamp + '_tx.pkl'
 tx_filepath = 'outputs/tx/' + tx_file
@@ -76,8 +74,6 @@ output_samples = rx_llrs.reshape(-1, 2*ofdm_size)
 #--- TRAIN NETWORK ---#
 
 filename = train_nn_withSNR(input_samples, output_samples, timestamp, snrdb_low, snrdb_high, lr, qbit, clipdb, ofdm_size, num_epochs, batch_size)
-    
-filenames.append(filename)
 
 #--- SAVE LIST OF FILENAMES ---#
 
@@ -88,8 +84,9 @@ modelpath = 'outputs/results/' + modelfile
 
 with open(modelpath, 'wb') as f:
     save_dict = {
-            'filenames': filenames,
-            'snrdb_low': snrdb_low}
+            'filename': filename,
+            'snrdb_low': snrdb_low,
+            'snrdb_high': snrdb_high}
     
     pickle.dump(save_dict, f)
     
