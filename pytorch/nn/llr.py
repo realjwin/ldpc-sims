@@ -71,3 +71,24 @@ class LLRestimator_withSNR(nn.Module):
         x = self.activation(self.hidden3(x))
         
         return self.final(x)
+    
+class LLRestimator_tanh(nn.Module):
+    def __init__(self, ofdm_size):
+        super(LLRestimator_withSNR, self).__init__()
+        
+        self.ofdm_size = ofdm_size
+        
+        self.activation = nn.Tanh()
+
+        self.hidden1 = nn.Linear(2*self.ofdm_size+1, 16*self.ofdm_size, bias=True)
+        self.hidden2 = nn.Linear(16*self.ofdm_size, 16*self.ofdm_size, bias=True)
+        self.hidden3 = nn.Linear(16*self.ofdm_size, 16*self.ofdm_size, bias=True)
+        
+        self.final = nn.Linear(16*self.ofdm_size, 2*self.ofdm_size, bias=True)
+        
+    def forward(self, x):
+        x = self.activation(self.hidden1(x))
+        x = self.activation(self.hidden2(x))
+        x = self.activation(self.hidden3(x))
+        
+        return nn.Tanh(self.final(x))
