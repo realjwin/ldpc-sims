@@ -155,9 +155,8 @@ for snrdb_idx, snrdb_val in enumerate(snrdb):
         with torch.no_grad():
             llr_est_temp = LLRest(x_input)
             llr_est_temp = 0.5*torch.log((1+llr_est_temp)/(1-llr_est_temp))
-            llr_est_temp = np.clip(llr_est_temp, -clamp_value, clamp_value)
             
-        llr_est[start_idx:end_idx, :] = llr_est_temp.cpu().detach().numpy()
+        llr_est[start_idx:end_idx, :] = np.clip(llr_est_temp.cpu().detach().numpy(), -clamp_value, clamp_value)
     
     #--- LLR WMSE PERFORMANCE ---#
     
